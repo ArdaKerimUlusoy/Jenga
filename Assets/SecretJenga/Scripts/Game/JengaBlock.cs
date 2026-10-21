@@ -5,9 +5,10 @@ using UnityEngine;
 namespace SecretJenga.Game
 {
     /// <summary>
-    /// One networked Jenga block. Physics runs only on the server (NetworkRigidbody makes client copies kinematic,
-    /// NetworkTransform replicates the server pose). Visual state (wood variant, color, hold highlight) is replicated
-    /// with NetworkVariables; hover highlight is purely local.
+    /// One networked Jenga block. Physics runs only on the host (NetworkRigidbody makes client copies kinematic,
+    /// NetworkTransform replicates the host pose, rotation and interpolation), so every client sees exactly one
+    /// authoritative tower state. Visual state (wood variant, hold highlight) is replicated with NetworkVariables;
+    /// the hover highlight is purely local.
     /// </summary>
     [RequireComponent(typeof(Rigidbody), typeof(BoxCollider))]
     public class JengaBlock : NetworkBehaviour
@@ -17,7 +18,6 @@ namespace SecretJenga.Game
         public enum HoldMode : byte { None = 0, Held = 1, Carried = 2 }
         public enum HoverMode : byte { None = 0, Valid = 1, Invalid = 2 }
 
-        public readonly NetworkVariable<BlockColor> Color = new NetworkVariable<BlockColor>(BlockColor.Natural);
         public readonly NetworkVariable<byte> Wood = new NetworkVariable<byte>();
         public readonly NetworkVariable<int> Layer = new NetworkVariable<int>(-1);
         public readonly NetworkVariable<HoldMode> Hold = new NetworkVariable<HoldMode>(HoldMode.None);
@@ -58,6 +58,20 @@ namespace SecretJenga.Game
             }
         }
 
+        static readonly Dictionary<int, PhysicsMaterial> _heldCache = new Dictionary<int, PhysicsMaterial>();
+
+        /// <summary>Held-block material with a custom friction (used by the Steady Grip card). Cached per value.</summary>
+        public static PhysicsMaterial HeldMaterial(float friction)
+        {
+            int key = Mathf.RoundToInt(friction * 1000f);
+            if (!_heldCache.TryGetValue(key, out var m) || m == null)
+            {
+                m = new PhysicsMaterial("TLB_WoodHeld_" + key) { staticFriction = friction * 1.3f, dynamicFriction = friction, bounciness = 0f, frictionCombine = PhysicsMaterialCombine.Minimum, bounceCombine = PhysicsMaterialCombine.Minimum };
+                _heldCache[key] = m;
+            }
+            return m;
+        }
+
         /// <summary>Horizontal long axis of the block (local X).</summary>
         public Vector3 LongAxis
         {
@@ -82,7 +96,6 @@ namespace SecretJenga.Game
             All[NetworkObjectId] = this;
             var rnd = new System.Random((int)(NetworkObjectId * 7919 % int.MaxValue));
             _uvOffset = new Vector2((float)rnd.NextDouble(), (float)rnd.NextDouble() * 0.3f);
-            Color.OnValueChanged += OnColorChanged;
             Wood.OnValueChanged += OnWoodChanged;
             Hold.OnValueChanged += OnHoldChanged;
             _lastPos = transform.position;
@@ -104,12 +117,10 @@ namespace SecretJenga.Game
         public override void OnNetworkDespawn()
         {
             All.Remove(NetworkObjectId);
-            Color.OnValueChanged -= OnColorChanged;
             Wood.OnValueChanged -= OnWoodChanged;
             Hold.OnValueChanged -= OnHoldChanged;
         }
 
-        void OnColorChanged(BlockColor a, BlockColor b) => ApplyVisuals();
         void OnWoodChanged(byte a, byte b) => ApplyVisuals();
 
         void OnHoldChanged(HoldMode previous, HoldMode current)
@@ -140,27 +151,33 @@ namespace SecretJenga.Game
             }
 
             _renderer.GetPropertyBlock(_mpb);
-            _mpb.SetColor("_BaseColor", Palette.BlockTint(Color.Value));
+            _mpb.SetColor("_BaseColor", WoodTint());
             _mpb.SetVector("_BaseMap_ST", new Vector4(1f, 1f, _uvOffset.x, _uvOffset.y));
             _mpb.SetColor("_EmissionColor", CurrentEmission());
-            _mpb.SetFloat("_Smoothness", Color.Value == BlockColor.Gold ? 0.75f : (Color.Value == BlockColor.Natural ? 0.35f : 0.55f));
+            _mpb.SetFloat("_Smoothness", 0.28f);
             _renderer.SetPropertyBlock(_mpb);
+        }
+
+        /// <summary>Slight per-block variation of aged, slightly dirty wood.</summary>
+        Color WoodTint()
+        {
+            float k = 0.78f + 0.12f * _uvOffset.x;
+            return new Color(k, k * 0.96f, k * 0.9f);
         }
 
         Color CurrentEmission()
         {
             if (Hold.Value != HoldMode.None)
             {
-                float pulse = 0.35f + 0.15f * Mathf.Sin(Time.time * 6f);
-                return Palette.Player(HolderColor.Value) * pulse;
+                float pulse = 0.16f + 0.06f * Mathf.Sin(Time.time * 5f);
+                return Color.Lerp(Palette.Lamp, Palette.Player(HolderColor.Value), 0.35f) * pulse;
             }
             switch (_hover)
             {
-                case HoverMode.Valid: return new Color(1f, 0.85f, 0.55f) * 0.28f;
-                case HoverMode.Invalid: return new Color(1f, 0.15f, 0.1f) * 0.3f;
+                case HoverMode.Valid: return Palette.Lamp * 0.22f;
+                case HoverMode.Invalid: return new Color(0.9f, 0.12f, 0.08f) * 0.3f;
             }
-            if (Color.Value == BlockColor.Gold) return new Color(1f, 0.75f, 0.3f) * 0.05f;
-            return UnityEngine.Color.black;
+            return Color.black;
         }
 
         void Update()
@@ -183,9 +200,8 @@ namespace SecretJenga.Game
         }
 
         // ------------------------------------------------------------------ Server API
-        public void ServerInit(BlockColor color, byte wood, int layer, int slot)
+        public void ServerInit(byte wood, int layer, int slot)
         {
-            Color.Value = color;
             Wood.Value = wood;
             Layer.Value = layer;
             Slot = slot;
@@ -197,11 +213,11 @@ namespace SecretJenga.Game
             Slot = slot;
         }
 
-        public void ServerBeginHold(byte holderColor)
+        public void ServerBeginHold(byte holderColor, PhysicsMaterial heldMaterial = null)
         {
             HolderColor.Value = holderColor;
             Hold.Value = HoldMode.Held;
-            Col.sharedMaterial = SlipperyMaterial;
+            Col.sharedMaterial = heldMaterial != null ? heldMaterial : SlipperyMaterial;
             Rb.constraints = RigidbodyConstraints.FreezeRotation;
             Rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
             Rb.WakeUp();

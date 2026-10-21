@@ -11,7 +11,7 @@ namespace SecretJenga.Networking
 {
     /// <summary>
     /// Wraps Unity Lobby: room creation, room browser queries, join by code / id, heartbeat, status updates and leaving.
-    /// Real-time room state (ready flags, colors, settings) lives in NGO (NetworkGameManager); the Lobby service is
+    /// Only used in Online (Relay) mode. Real-time room state (ready flags, colors, settings) lives in NGO; the Lobby service is
     /// used for discovery, room codes and handing out the Relay join code.
     /// </summary>
     public class LobbyManager : MonoBehaviour
@@ -21,7 +21,7 @@ namespace SecretJenga.Networking
         public const string KeyRelayCode = "relay";
         public const string KeyStatus = "status";   // indexed S1: "waiting" / "playing"
         public const string KeyVersion = "ver";     // indexed S2: build version
-        public const string KeyTarget = "target";   // indexed N1: target height
+        public const string KeyTarget = "target";   // indexed N1: required successful turns
         public const string StatusWaiting = "waiting";
         public const string StatusPlaying = "playing";
 
@@ -59,14 +59,14 @@ namespace SecretJenga.Networking
                     { KeyRelayCode, new DataObject(DataObject.VisibilityOptions.Member, relayCode) },
                     { KeyStatus, new DataObject(DataObject.VisibilityOptions.Public, StatusWaiting, DataObject.IndexOptions.S1) },
                     { KeyVersion, new DataObject(DataObject.VisibilityOptions.Public, GameRules.BuildVersion, DataObject.IndexOptions.S2) },
-                    { KeyTarget, new DataObject(DataObject.VisibilityOptions.Public, s.targetHeight.ToString(), DataObject.IndexOptions.N1) },
+                    { KeyTarget, new DataObject(DataObject.VisibilityOptions.Public, s.requiredTurns.ToString(), DataObject.IndexOptions.N1) },
                 }
             };
-            string name = string.IsNullOrWhiteSpace(s.roomName) ? "Secret Jenga Room" : s.roomName.Trim();
+            string name = string.IsNullOrWhiteSpace(s.roomName) ? "The Last Block" : s.roomName.Trim();
             CurrentLobby = await LobbyService.Instance.CreateLobbyAsync(name, Mathf.Clamp(s.maxPlayers, GameRules.MinPlayers, GameRules.MaxPlayers), options);
             GameSettings.LastLobbyId = CurrentLobby.Id;
             StartHeartbeat();
-            Debug.Log($"[SecretJenga] Lobby created '{CurrentLobby.Name}' code={CurrentLobby.LobbyCode} id={CurrentLobby.Id}");
+            Debug.Log($"[TheLastBlock] Lobby created '{CurrentLobby.Name}' code={CurrentLobby.LobbyCode} id={CurrentLobby.Id}");
             return CurrentLobby;
         }
 
@@ -134,7 +134,7 @@ namespace SecretJenga.Networking
                     }
                 });
             }
-            catch (Exception e) { Debug.LogWarning("[SecretJenga] Lobby status update failed: " + e.Message); }
+            catch (Exception e) { Debug.LogWarning("[TheLastBlock] Lobby status update failed: " + e.Message); }
         }
 
         public async Task SetTargetAsync(int target)
@@ -150,7 +150,7 @@ namespace SecretJenga.Networking
                     }
                 });
             }
-            catch (Exception e) { Debug.LogWarning("[SecretJenga] Lobby target update failed: " + e.Message); }
+            catch (Exception e) { Debug.LogWarning("[TheLastBlock] Lobby target update failed: " + e.Message); }
         }
 
         /// <summary>Host only: frees the lobby slot of a player who left.</summary>
@@ -158,7 +158,7 @@ namespace SecretJenga.Networking
         {
             if (!IsLobbyHost || string.IsNullOrEmpty(playerId)) return;
             try { await LobbyService.Instance.RemovePlayerAsync(CurrentLobby.Id, playerId); }
-            catch (Exception e) { Debug.LogWarning("[SecretJenga] RemovePlayer failed: " + e.Message); }
+            catch (Exception e) { Debug.LogWarning("[TheLastBlock] RemovePlayer failed: " + e.Message); }
         }
 
         /// <summary>Host deletes the lobby, clients remove themselves.</summary>
@@ -173,7 +173,7 @@ namespace SecretJenga.Networking
                 if (lobby.HostId == AuthenticationService.Instance.PlayerId) await LobbyService.Instance.DeleteLobbyAsync(lobby.Id);
                 else await LobbyService.Instance.RemovePlayerAsync(lobby.Id, AuthenticationService.Instance.PlayerId);
             }
-            catch (Exception e) { Debug.LogWarning("[SecretJenga] Leaving lobby failed (it will expire on its own): " + e.Message); }
+            catch (Exception e) { Debug.LogWarning("[TheLastBlock] Leaving lobby failed (it will expire on its own): " + e.Message); }
         }
 
         public void ForgetLobby()
@@ -201,7 +201,7 @@ namespace SecretJenga.Networking
             {
                 var task = LobbyService.Instance.SendHeartbeatPingAsync(CurrentLobby.Id);
                 yield return new WaitUntil(() => task.IsCompleted);
-                if (task.IsFaulted) Debug.LogWarning("[SecretJenga] Lobby heartbeat failed: " + task.Exception?.GetBaseException().Message);
+                if (task.IsFaulted) Debug.LogWarning("[TheLastBlock] Lobby heartbeat failed: " + task.Exception?.GetBaseException().Message);
                 yield return wait;
             }
         }

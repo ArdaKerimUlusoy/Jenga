@@ -3,10 +3,10 @@ using UnityEngine;
 
 namespace SecretJenga.Game
 {
-    /// <summary>Purely visual, non-networked tower shown on the table while in menus / lobby.</summary>
+    /// <summary>Purely visual, non-networked tower (with a few gaps, mid-game) shown on the table while in menus / lobby.</summary>
     public class MenuShowcase : MonoBehaviour
     {
-        public int layers = 14;
+        public int layers = GameRules.DefaultStartLayers + 3;
         readonly List<GameObject> _blocks = new List<GameObject>();
         bool _visible = true;
 
@@ -38,11 +38,9 @@ namespace SecretJenga.Game
                     }
                     else mr.sharedMaterial = RuntimeArt.MakeLit(new Color(0.85f, 0.68f, 0.45f));
 
-                    var color = BlockColor.Natural;
-                    double r = rnd.NextDouble();
-                    if (l < layers - 2 && r < 0.2) color = (BlockColor)(1 + rnd.Next(4));
+                    float k = 0.78f + 0.12f * (float)rnd.NextDouble();
                     mr.GetPropertyBlock(mpb);
-                    mpb.SetColor("_BaseColor", Palette.BlockTint(color));
+                    mpb.SetColor("_BaseColor", new Color(k, k * 0.96f, k * 0.9f));
                     mpb.SetVector("_BaseMap_ST", new Vector4(1, 1, (float)rnd.NextDouble(), (float)rnd.NextDouble() * 0.3f));
                     mr.SetPropertyBlock(mpb);
                     _blocks.Add(go);

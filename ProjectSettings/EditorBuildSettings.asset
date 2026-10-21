@@ -6,8 +6,8 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
-    path: Assets/SecretJenga/Scenes/SecretJenga.unity
-    guid: 2cd385299a78c4140949211f136c3a52
+    path: Assets/SecretJenga/Scenes/TheLastBlock.unity
+    guid: e95544cca1893724e8ab53dd32d9f455
   - enabled: 0
     path: Assets/Scenes/SampleScene.unity
     guid: 99c9720ab356a0642a771bea13969a05

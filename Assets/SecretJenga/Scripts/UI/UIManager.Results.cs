@@ -5,52 +5,60 @@ using UnityEngine.UI;
 
 namespace SecretJenga.UI
 {
+    /// <summary>The end of a round as a typed incident report, stamped STANDING or COLLAPSED.</summary>
     public partial class UIManager
     {
-        Text _resTitle, _resReason, _resWaiting;
-        RectTransform _resGrid;
+        Text _resTitle, _resReason, _resTurns, _resWaiting, _resCards, _resHeader;
+        RectTransform _resGrid, _resStampHolder;
         Button _resPlayAgain, _resLobby;
-        Image _resBanner;
+        int _reportNo;
 
         void BuildResults()
         {
+            UIFactory.OnPaper = false;
             var g = NewScreen(View.Results, "Results");
-            var dim = UIFactory.Image(g.transform, "Dim", null, new Color(0.04f, 0.02f, 0.01f, 0.55f));
+            var dim = UIFactory.Image(g.transform, "Dim", null, new Color(0f, 0f, 0f, 0.58f));
             dim.raycastTarget = true;
             UIFactory.Stretch(dim.rectTransform);
             dim.transform.SetAsFirstSibling();
 
-            var card = UIFactory.Card(g.transform, "ResultsCard");
-            UIFactory.Place((RectTransform)card.transform.parent, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(1640, 940));
-            card.transform.parent.SetAsLastSibling();
-            var col = UIFactory.Rect("Col", card.transform);
-            UIFactory.Stretch(col);
-            UIFactory.VLayout(col, 14, 40);
+            var sheet = UIFactory.PaperSheet(g.transform, "SheetReport", new Vector2(0.5f, 0.5f), new Vector2(0, -6), new Vector2(1640, 990), -0.7f, 2, 70);
+            var col = sheet.Body;
+            col.GetComponent<VerticalLayoutGroup>().spacing = 6;
 
-            _resBanner = UIFactory.Image(col, "Banner", UIFactory.RoundedSprite, Palette.Good);
-            UIFactory.LE(_resBanner, 120);
-            _resTitle = UIFactory.Text(_resBanner.transform, "TEAM VICTORY!", 72, Color.white, TextAnchor.MiddleCenter, FontStyle.Bold);
-            UIFactory.AddShadow(_resTitle, new Color(0, 0, 0, 0.4f), new Vector2(3, -4));
-            UIFactory.Stretch(_resTitle.rectTransform);
-            _resReason = UIFactory.Text(col, "", 30, Palette.Paper, TextAnchor.MiddleCenter, FontStyle.Italic);
-            UIFactory.LE(_resReason, 44);
-            var sub = UIFactory.Text(col, "SECRET MISSIONS REVEALED", 24, Palette.Accent, TextAnchor.MiddleCenter, FontStyle.Bold);
-            UIFactory.LE(sub, 32);
+            _resHeader = UIFactory.Write(col, FontKind.Type, "", 19, Ink.Faded, TextAnchor.MiddleLeft);
+            UIFactory.LE(_resHeader, 28);
+            _resTitle = UIFactory.Write(col, FontKind.Title, "", 74, Ink.Black, TextAnchor.MiddleLeft);
+            _resTitle.horizontalOverflow = HorizontalWrapMode.Overflow;
+            UIFactory.LE(_resTitle, 90);
+            _resReason = UIFactory.Write(col, FontKind.Body, "", 27, Ink.Faded, TextAnchor.MiddleLeft, FontStyle.Italic);
+            UIFactory.LE(_resReason, 36);
+            _resTurns = UIFactory.Write(col, FontKind.Type, "", 22, Ink.Black, TextAnchor.MiddleLeft);
+            UIFactory.LE(_resTurns, 32);
+            UIFactory.Divider(col);
+            UIFactory.Caption(col, "the secret tasks, now that it no longer matters:");
 
             _resGrid = UIFactory.Rect("Grid", col);
-            UIFactory.LE(_resGrid, 470);
-            var h = UIFactory.HLayout(_resGrid, 18, 0, TextAnchor.MiddleCenter, true);
+            UIFactory.LE(_resGrid, 430);
+            var h = UIFactory.HLayout(_resGrid, 34, 0, TextAnchor.UpperLeft, true);
             h.childForceExpandHeight = true;
 
-            _resWaiting = UIFactory.Text(col, "", 26, Palette.Muted, TextAnchor.MiddleCenter, FontStyle.Italic);
-            UIFactory.LE(_resWaiting, 36);
+            UIFactory.Divider(col);
+            _resCards = UIFactory.Write(col, FontKind.Type, "", 18, Ink.Faded, TextAnchor.UpperLeft);
+            UIFactory.LE(_resCards, 52);
 
-            var row = UIFactory.Rect("Buttons", col);
-            UIFactory.LE(row, 90);
-            UIFactory.HLayout(row, 20, 0);
-            UIFactory.Button(row, "Leave", LeaveRoom, ButtonStyle.Ghost, 30);
-            _resLobby = UIFactory.Button(row, "Return to Lobby", () => _game?.ReturnToLobbyServerRpc(), ButtonStyle.Secondary, 30);
-            _resPlayAgain = UIFactory.Button(row, "Play Again", () => _game?.PlayAgainServerRpc(), ButtonStyle.Primary, 34, A.iconRefresh);
+            UIFactory.LE(UIFactory.Rect("Push", col), -1, -1, -1, 1);
+            var row = UIFactory.ButtonRow(col, 70, 60);
+            UIFactory.Button(row, "leave the table", LeaveRoom, ButtonStyle.Ghost, 30);
+            _resWaiting = UIFactory.Write(row, FontKind.Body, "", 22, Ink.Faded, TextAnchor.MiddleLeft, FontStyle.Italic);
+            UIFactory.LE(_resWaiting, -1, -1, 1);
+            _resLobby = UIFactory.Button(row, "Back to the lobby", () => _game?.ReturnToLobbyServerRpc(), ButtonStyle.Secondary, 32);
+            _resPlayAgain = UIFactory.Button(row, "Another round", () => _game?.PlayAgainServerRpc(), ButtonStyle.Primary, 42);
+
+            // the stamp, top right of the sheet
+            _resStampHolder = UIFactory.Rect("StampHolder", sheet.Root);
+            UIFactory.Place(_resStampHolder, new Vector2(1f, 1f), new Vector2(0.5f, 0.5f), new Vector2(-300, -150), new Vector2(420, 150));
+            UIFactory.OnPaper = false;
         }
 
         void OnResultsRevealed()
@@ -61,79 +69,98 @@ namespace SecretJenga.UI
         void RefreshResults()
         {
             if (_resGrid == null) return;
-            bool won = SecretMissionManager.LastTeamWon;
+            bool won = RoundResults.GroupWon;
+            string reason = RoundResults.ReasonText;
             if (_game != null && _game.IsSpawned)
             {
                 won = _game.TeamWon.Value;
-                _resReason.text = _game.EndReason.Value.ToString();
+                if (string.IsNullOrEmpty(reason)) reason = _game.EndReason.Value.ToString();
                 bool host = _game.IsServer;
                 _resPlayAgain.gameObject.SetActive(host);
                 _resLobby.gameObject.SetActive(host);
-                _resWaiting.text = host ? "You are the host: play again with the same group or go back to the lobby." : "Waiting for the host to play again or return to the lobby...";
+                _resWaiting.text = host ? "" : "the host decides what happens next...";
             }
-            _resBanner.color = won ? Palette.Good : Palette.Bad;
-            _resTitle.text = won ? "TEAM VICTORY!" : "THE TOWER FELL";
+            if (_reportNo == 0) _reportNo = Random.Range(104, 987);
+            _resHeader.text = $"INCIDENT REPORT  No. {_reportNo}        {System.DateTime.Now:dd.MM.yyyy  HH:mm}";
+            _resTitle.text = won ? "The tower stands." : "The tower fell.";
+            _resReason.text = reason;
+            _resTurns.text = RoundResults.RequiredTurns > 0 ? $"turns survived:  {RoundResults.SuccessfulTurns} of {RoundResults.RequiredTurns}" : "";
+            _resCards.text = string.IsNullOrEmpty(RoundResults.CardSummary) ? "" : "cards:  " + RoundResults.CardSummary.Replace("\n", "     ");
+
+            foreach (Transform c in _resStampHolder) Destroy(c.gameObject);
+            UIFactory.OnPaper = true;
+            var stamp = UIFactory.Stamp(_resStampHolder, won ? "STANDING" : "COLLAPSED", won ? new Color(Ink.Green.r, Ink.Green.g, Ink.Green.b, 0.8f) : new Color(Ink.Red.r, Ink.Red.g, Ink.Red.b, 0.85f), new Vector2(400, 130), won ? 9f : -11f);
+            stamp.anchorMin = stamp.anchorMax = new Vector2(0.5f, 0.5f);
+            stamp.anchoredPosition = Vector2.zero;
+            UITween.Scale(stamp, Vector3.one * 1.6f, Vector3.one, 0.22f, false);
 
             foreach (Transform c in _resGrid) Destroy(c.gameObject);
-            var results = SecretMissionManager.LastResults;
+            var results = RoundResults.Players;
             if (results == null || results.Count == 0)
             {
-                var t = UIFactory.Text(_resGrid, "Revealing missions...", 30, Palette.Paper);
+                var t = UIFactory.Write(_resGrid, FontKind.Body, "unsealing the envelopes...", 28, Ink.Faded, TextAnchor.UpperLeft, FontStyle.Italic);
                 UIFactory.LE(t, -1, -1, 1);
+                UIFactory.OnPaper = false;
                 return;
             }
-            foreach (var r in results) AddResultCard(r, won);
+            foreach (var r in results) AddResultCard(r);
+            UIFactory.OnPaper = false;
         }
 
-        void AddResultCard(MissionResult r, bool teamWon)
+        void AddResultCard(PlayerRoundResult r)
         {
-            var bg = UIFactory.Image(_resGrid, "Player", UIFactory.RoundedSprite, new Color(1, 1, 1, 0.07f));
-            UIFactory.LE(bg, -1, 360, 1);
-            var v = UIFactory.VLayout(bg, 10, 22, TextAnchor.UpperCenter);
+            var colRt = UIFactory.Rect("Player", _resGrid);
+            UIFactory.LE(colRt, -1, 280, 1);
+            var v = UIFactory.VLayout(colRt, 4, 0, TextAnchor.UpperLeft);
             v.childForceExpandHeight = false;
 
             var color = Palette.Player(r.ColorIndex);
-            var av = UIFactory.Avatar(bg.transform, r.Name.ToString(), color, 96);
-            var holder = UIFactory.Rect("AvatarRow", bg.transform);
-            UIFactory.LE(holder, 100);
-            av.transform.SetParent(holder, false);
-            UIFactory.Place(av.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(96, 96));
+            var head = UIFactory.Rect("Head", colRt);
+            UIFactory.LE(head, 60);
+            UIFactory.HLayout(head, 12, 0, TextAnchor.MiddleLeft, false);
+            UIFactory.Avatar(head, r.Name.ToString(), new Color(color.r * 0.72f, color.g * 0.72f, color.b * 0.72f), 50);
+            var name = UIFactory.Write(head, FontKind.Body, r.Name.ToString(), 32, Ink.Black, TextAnchor.MiddleLeft);
+            name.horizontalOverflow = HorizontalWrapMode.Overflow;
+            UIFactory.LE(name, 60, -1, 1);
 
-            var name = UIFactory.Text(bg.transform, r.Name.ToString(), 32, Palette.Cream, TextAnchor.MiddleCenter, FontStyle.Bold);
-            UIFactory.LE(name, 42);
+            var turns = UIFactory.Write(colRt, FontKind.Type, $"{r.SuccessfulTurns} turn(s) survived" + (r.CausedCollapse ? "\nit fell in their hands" : ""), 16, r.CausedCollapse ? Ink.Red : Ink.Faded, TextAnchor.UpperLeft);
+            UIFactory.LE(turns, 44);
 
-            var m = r.Mission;
-            var mrow = UIFactory.Rect("Mission", bg.transform);
-            UIFactory.LE(mrow, 52);
-            UIFactory.HLayout(mrow, 10, 0, TextAnchor.MiddleCenter, false);
-            var ic = UIFactory.Image(mrow, "Icon", A.MissionIcon(m.Type), m.Type == MissionType.ColorHunter ? Palette.BlockUIColor(m.TargetColor) : Palette.Accent, false);
-            ic.preserveAspect = true;
-            UIFactory.LE(ic, 46, 46);
-            var mt = UIFactory.Text(mrow, MissionCatalog.Title(m.Type), 28, Palette.Accent, TextAnchor.MiddleLeft, FontStyle.Bold);
-            mt.horizontalOverflow = HorizontalWrapMode.Overflow;
-            UIFactory.LE(mt, 46);
+            var t = r.Task;
+            var def = t.Kind == TaskKind.None ? null : GameContent.Task(t.DefinitionIndex);
+            var title = UIFactory.Write(colRt, FontKind.Title, def != null ? def.title : "no task", 28, Ink.Black, TextAnchor.MiddleLeft);
+            UIFactory.LE(title, 38);
+            var desc = UIFactory.Write(colRt, FontKind.Body, def != null ? def.Describe(t, RoundResults.RequiredTurns) : "", 19, Ink.Black, TextAnchor.UpperLeft);
+            UIFactory.LE(desc, 120);
+            var prog = UIFactory.Write(colRt, FontKind.Type, def != null ? $"{t.Progress} of {t.Target}" : "", 17, Ink.Faded, TextAnchor.MiddleLeft);
+            UIFactory.LE(prog, 26);
 
-            var desc = UIFactory.Text(bg.transform, MissionCatalog.Description(m), 22, Palette.Paper);
-            UIFactory.LE(desc, 110);
-            var prog = UIFactory.Text(bg.transform, m.Type == MissionType.None ? "" : $"Progress {m.Progress} / {m.Target}   -   {r.SuccessfulMoves} successful move(s)", 22, Palette.Muted);
-            UIFactory.LE(prog, 30);
-
-            string status;
-            Color sc;
-            if (m.Completed && teamWon) { status = "MISSION ACCOMPLISHED"; sc = Palette.Good; }
-            else if (m.Completed) { status = "DONE - BUT THE TEAM LOST"; sc = Palette.AccentDark; }
-            else { status = "MISSION FAILED"; sc = Palette.Bad; }
-            var pill = UIFactory.Image(bg.transform, "Status", UIFactory.PillSprite, sc);
-            UIFactory.LE(pill, 54);
-            var st = UIFactory.Text(pill.transform, status, 22, Color.white, TextAnchor.MiddleCenter, FontStyle.Bold);
-            UIFactory.Stretch(st.rectTransform);
-            if (m.Completed && teamWon)
+            // verdict, by hand
+            var verdictRow = UIFactory.Rect("Verdict", colRt);
+            UIFactory.LE(verdictRow, 58);
+            var word = UIFactory.Write(verdictRow, FontKind.Title, "", 30, Ink.Black, TextAnchor.MiddleLeft);
+            UIFactory.Stretch(word.rectTransform, 14, 0, 0, 0);
+            if (t.Completed)
             {
-                var crown = UIFactory.Image(bg.transform, "Crown", A.iconCrown, Palette.Accent, false);
-                crown.preserveAspect = true;
-                UIFactory.LE(crown, 40);
+                word.text = "kept";
+                word.color = Ink.Black;
+                var c = UIFactory.Image(verdictRow, "Circle", A.inkCircle != null ? A.inkCircle : UIFactory.CircleSprite, Ink.Red, false);
+                UIFactory.Place(c.rectTransform, new Vector2(0, 0.5f), new Vector2(0, 0.5f), new Vector2(-6, 0), new Vector2(120, 56));
             }
-            UITween.Scale(bg.transform, Vector3.one * 0.85f, Vector3.one, 0.45f);
+            else
+            {
+                word.text = t.Failed ? "broken" : "unfinished";
+                word.color = t.Failed ? Ink.Red : Ink.Faded;
+                if (t.Failed)
+                {
+                    var s = UIFactory.Image(verdictRow, "Strike", UIFactory.StrokeSprite, Ink.Red, false);
+                    UIFactory.Place(s.rectTransform, new Vector2(0, 0.5f), new Vector2(0, 0.5f), new Vector2(6, 0), new Vector2(word.preferredWidth + 18, 10));
+                    s.rectTransform.localRotation = Quaternion.Euler(0, 0, 4f);
+                }
+            }
+
+            var cardLine = UIFactory.Write(colRt, FontKind.Type, "card: " + GameContent.CardTitle(r.Card) + (r.Card.Kind != CardKind.None ? (r.Card.Used ? " - played" : " - kept") : ""), 15, Ink.Faded, TextAnchor.MiddleLeft);
+            UIFactory.LE(cardLine, 24);
         }
     }
 }

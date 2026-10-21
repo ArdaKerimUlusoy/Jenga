@@ -20,11 +20,12 @@ using Object = UnityEngine.Object;
 namespace SecretJenga.EditorTools
 {
     /// <summary>
-    /// Tools > Secret Jenga > Generate Project
-    /// Creates (or refreshes - it is safe to run again) every generated asset of the game:
-    /// texture/audio import settings, URP materials, procedural meshes (+ OBJ export), physics materials,
-    /// network prefabs, the NGO prefab list, the asset registry, the post-processing profile,
-    /// the fully wired game scene and the player/build settings.
+    /// Tools > The Last Block > Generate Project
+    /// Creates (or refreshes - it is safe to run again) every generated asset of THE LAST BLOCK:
+    /// texture/audio import settings, URP materials, procedural meshes, network prefabs, the NGO prefab list,
+    /// task/card definition assets (existing ones are kept so designer edits survive), the asset registry,
+    /// the post-processing profile, the fully wired underground-room scene and the player/build settings.
+    /// Obsolete assets from the old "Secret Jenga" living-room version are removed.
     /// </summary>
     public static class SecretJengaProjectGenerator
     {
@@ -37,7 +38,11 @@ namespace SecretJenga.EditorTools
         const string Audio = Root + "/Audio";
         const string Scenes = Root + "/Scenes";
         const string Res = Root + "/Resources";
-        public const string ScenePath = Scenes + "/SecretJenga.unity";
+        const string Data = Root + "/Data";
+        const string TaskDir = Data + "/Tasks";
+        const string CardDir = Data + "/Cards";
+        public const string ScenePath = Scenes + "/TheLastBlock.unity";
+        const string OldScenePath = Scenes + "/SecretJenga.unity";
 
         class Ctx
         {
@@ -47,14 +52,16 @@ namespace SecretJenga.EditorTools
             public SecretJengaAssets Registry;
             public NetworkPrefabsList PrefabList;
             public VolumeProfile Volume;
+            public TaskDefinition[] Tasks;
+            public CardDefinition[] Cards;
         }
 
-        [MenuItem("Tools/Secret Jenga/Generate Project", priority = 0)]
+        [MenuItem("Tools/The Last Block/Generate Project", priority = 0)]
         public static void Generate()
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode)
             {
-                EditorUtility.DisplayDialog("Secret Jenga", "Exit Play Mode first.", "OK");
+                EditorUtility.DisplayDialog("The Last Block", "Exit Play Mode first.", "OK");
                 return;
             }
             if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
@@ -63,14 +70,16 @@ namespace SecretJenga.EditorTools
             try
             {
                 Step("Folders", 0.02f); EnsureFolders();
+                Step("Removing obsolete assets", 0.05f); RemoveObsolete();
                 Step("Texture import settings", 0.08f); ConfigureTextures();
-                Step("Audio import settings", 0.15f); ConfigureAudio();
+                Step("Audio import settings", 0.14f); ConfigureAudio();
                 Step("Materials", 0.22f); CreateMaterials(ctx);
-                Step("Meshes + OBJ export", 0.32f); CreateMeshes(ctx);
-                Step("Block prefab", 0.42f); CreateBlockPrefab(ctx);
-                Step("Session prefab", 0.48f); CreateSessionPrefab(ctx);
-                Step("Environment prefab", 0.55f); CreateEnvironmentPrefab(ctx);
-                Step("Network prefab list", 0.62f); CreatePrefabList(ctx);
+                Step("Meshes", 0.30f); CreateMeshes(ctx);
+                Step("Block prefab", 0.38f); CreateBlockPrefab(ctx);
+                Step("Session prefab", 0.44f); CreateSessionPrefab(ctx);
+                Step("Underground room", 0.52f); CreateEnvironmentPrefab(ctx);
+                Step("Network prefab list", 0.60f); CreatePrefabList(ctx);
+                Step("Tasks and cards", 0.64f); CreateContent(ctx);
                 Step("Asset registry", 0.68f); CreateRegistry(ctx);
                 Step("Post processing", 0.74f); CreateVolumeProfile(ctx);
                 Step("Scene", 0.82f); CreateScene(ctx);
@@ -82,23 +91,23 @@ namespace SecretJenga.EditorTools
             {
                 Debug.LogException(e);
                 EditorUtility.ClearProgressBar();
-                EditorUtility.DisplayDialog("Secret Jenga", "Generation failed:\n" + e.Message + "\n\nSee the Console for details.", "OK");
+                EditorUtility.DisplayDialog("The Last Block", "Generation failed:\n" + e.Message + "\n\nSee the Console for details.", "OK");
                 return;
             }
             EditorUtility.ClearProgressBar();
-            Debug.Log("[SecretJenga] Project generated. Open " + ScenePath + " and press Play.");
-            EditorUtility.DisplayDialog("Secret Jenga",
+            Debug.Log("[TheLastBlock] Project generated. Open " + ScenePath + " and press Play.");
+            EditorUtility.DisplayDialog("The Last Block",
                 "Project generated!\n\nScene: " + ScenePath + " (opened and added to Build Settings).\n\n" +
-                "Before playing online make sure this project is linked to Unity Cloud (Edit > Project Settings > Services) " +
-                "and that Relay + Lobby are enabled in the Unity Dashboard. See Assets/SecretJenga/README.md.", "Great");
+                "Quick test: Play > Host Game > Direct (IP) > Open the Table. A second player joins with Direct (IP) and 127.0.0.1 " +
+                "(Multiplayer Play Mode or a second build). Online (Relay) mode needs Unity Cloud linking - see Assets/SecretJenga/README.md.", "OK");
         }
 
-        static void Step(string what, float p) => EditorUtility.DisplayProgressBar("Secret Jenga", what + "...", p);
+        static void Step(string what, float p) => EditorUtility.DisplayProgressBar("The Last Block", what + "...", p);
 
         // ------------------------------------------------------------------ Folders
         static void EnsureFolders()
         {
-            foreach (var f in new[] { Root, Root + "/Scripts", Root + "/Editor", Prefabs, Mats, Models, Models + "/OBJ", Scenes, Tex, UITex, Audio, Res })
+            foreach (var f in new[] { Root, Root + "/Scripts", Root + "/Editor", Prefabs, Mats, Models, Scenes, Tex, UITex, Audio, Res, Data, TaskDir, CardDir })
                 EnsureFolder(f);
         }
 
@@ -109,6 +118,30 @@ namespace SecretJenga.EditorTools
             var name = Path.GetFileName(path);
             if (!string.IsNullOrEmpty(parent) && !AssetDatabase.IsValidFolder(parent)) EnsureFolder(parent);
             AssetDatabase.CreateFolder(parent, name);
+        }
+
+        /// <summary>Living-room assets of the previous version that the dark room no longer uses.</summary>
+        static void RemoveObsolete()
+        {
+            var obsolete = new List<string>
+            {
+                OldScenePath, Prefabs + "/SJ_Environment.prefab",
+                Models + "/OBJ",
+                Tex + "/T_Rug_Albedo.png", Tex + "/T_Wallpaper_Albedo.png", Tex + "/T_FloorOak_Albedo.png", Tex + "/T_FloorOak_Normal.png",
+            };
+            foreach (var m in new[] { "M_BookA", "M_BookB", "M_BookC", "M_BookD", "M_Brass", "M_CardBack", "M_Ceramic", "M_Dice", "M_FloorOak", "M_LampShade", "M_Rug", "M_TableLeg", "M_TableWalnut", "M_Wallpaper", "M_WallTrim", "M_Window", "M_Ceiling" })
+                obsolete.Add(Mats + "/" + m + ".mat");
+            foreach (var m in new[] { "SJ_ApronLong", "SJ_ApronShort", "SJ_Baseboard", "SJ_Book", "SJ_Bulb", "SJ_Card", "SJ_Cord", "SJ_Dice", "SJ_Floor", "SJ_LampShade", "SJ_Mug", "SJ_Rug", "SJ_Shelf", "SJ_ShelfSide", "SJ_TableLeg", "SJ_TableTop", "SJ_Wall", "SJ_WindowBarH", "SJ_WindowBarV", "SJ_WindowGlass" })
+                obsolete.Add(Models + "/" + m + ".asset");
+            foreach (var i in new[] { "Icon_Architect", "Icon_ColorHunter", "Icon_Guardian", "Icon_Master", "Icon_RiskTaker", "Icon_Saboteur", "Icon_Speed" })
+                obsolete.Add(UITex + "/" + i + ".png");
+            int removed = 0;
+            foreach (var p in obsolete)
+            {
+                if (AssetDatabase.LoadMainAssetAtPath(p) == null && !AssetDatabase.IsValidFolder(p)) continue;
+                if (AssetDatabase.DeleteAsset(p)) removed++;
+            }
+            if (removed > 0) Debug.Log($"[TheLastBlock] Removed {removed} obsolete asset(s) from the old living-room version.");
         }
 
         // ------------------------------------------------------------------ Import settings
@@ -164,6 +197,9 @@ namespace SecretJenga.EditorTools
                 case "UI_Rounded": return new Vector4(18, 18, 18, 18);
                 case "UI_Pill": return new Vector4(31, 31, 31, 31);
                 case "UI_Card": return new Vector4(30, 30, 30, 30);
+                case "UI_Paper": return new Vector4(56, 56, 56, 56);
+                case "UI_PaperSlip": return new Vector4(40, 34, 40, 34);
+                case "UI_Stamp": return new Vector4(30, 30, 30, 30);
                 default: return Vector4.zero;
             }
         }
@@ -201,7 +237,7 @@ namespace SecretJenga.EditorTools
 
         static Texture2D T(string file) => AssetDatabase.LoadAssetAtPath<Texture2D>(Tex + "/" + file);
 
-        static Material LitMat(Ctx ctx, string name, Color color, float smooth, Texture2D albedo = null, Texture2D normal = null, Vector2? tiling = null, float metallic = 0f, Color? emission = null, bool doubleSided = false)
+        static Material LitMat(Ctx ctx, string name, Color color, float smooth, Texture2D albedo = null, Texture2D normal = null, Vector2? tiling = null, float metallic = 0f, Color? emission = null, bool doubleSided = false, float bump = 0.7f)
         {
             var path = Mats + "/" + name + ".mat";
             var m = LoadOrCreate(path, () => new Material(Lit));
@@ -218,14 +254,18 @@ namespace SecretJenga.EditorTools
             {
                 m.SetTexture("_BumpMap", normal);
                 m.SetTextureScale("_BumpMap", t);
-                m.SetFloat("_BumpScale", 0.7f);
+                m.SetFloat("_BumpScale", bump);
                 m.EnableKeyword("_NORMALMAP");
             }
-            else m.DisableKeyword("_NORMALMAP");
+            else
+            {
+                m.SetTexture("_BumpMap", null);
+                m.DisableKeyword("_NORMALMAP");
+            }
             m.EnableKeyword("_EMISSION");
             m.SetColor("_EmissionColor", emission ?? Color.black);
             m.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
-            if (doubleSided && m.HasProperty("_Cull")) { m.SetFloat("_Cull", 0f); m.doubleSidedGI = true; }
+            if (m.HasProperty("_Cull")) { m.SetFloat("_Cull", doubleSided ? 0f : 2f); m.doubleSidedGI = doubleSided; }
             EditorUtility.SetDirty(m);
             ctx.M[name] = m;
             return m;
@@ -233,35 +273,35 @@ namespace SecretJenga.EditorTools
 
         static void CreateMaterials(Ctx ctx)
         {
+            // blocks: aged, slightly dirty beech
             var blockNormal = T("T_BlockWood_Normal.png");
-            for (int i = 0; i < 3; i++) LitMat(ctx, "M_BlockWood_" + i, Color.white, 0.35f, T($"T_BlockWood_{i}_Albedo.png"), blockNormal);
-            LitMat(ctx, "M_BlockEndGrain", new Color(0.95f, 0.9f, 0.85f), 0.25f, T("T_BlockEndGrain_Albedo.png"));
-            LitMat(ctx, "M_TableWalnut", Color.white, 0.62f, T("T_TableWalnut_Albedo.png"), T("T_TableWalnut_Normal.png"));
-            LitMat(ctx, "M_TableLeg", new Color(0.85f, 0.8f, 0.75f), 0.5f, T("T_TableWalnut_Albedo.png"), null, new Vector2(1, 3));
-            LitMat(ctx, "M_FloorOak", Color.white, 0.35f, T("T_FloorOak_Albedo.png"), T("T_FloorOak_Normal.png"), new Vector2(5, 5));
-            LitMat(ctx, "M_Wallpaper", Color.white, 0.08f, T("T_Wallpaper_Albedo.png"));
-            LitMat(ctx, "M_WallTrim", new Color(0.55f, 0.42f, 0.34f), 0.4f, T("T_TableWalnut_Albedo.png"));
-            LitMat(ctx, "M_Rug", Color.white, 0.02f, T("T_Rug_Albedo.png"));
-            LitMat(ctx, "M_Ceiling", new Color(0.25f, 0.2f, 0.17f), 0.05f);
-            LitMat(ctx, "M_LampShade", new Color(0.12f, 0.30f, 0.22f), 0.75f, null, null, null, 0.4f, null, true);
-            LitMat(ctx, "M_Brass", new Color(0.78f, 0.6f, 0.3f), 0.7f, null, null, null, 0.9f);
-            LitMat(ctx, "M_Bulb", new Color(1f, 0.9f, 0.7f), 0.9f, null, null, null, 0f, new Color(1f, 0.75f, 0.45f) * 6f);
-            LitMat(ctx, "M_Window", new Color(0.08f, 0.1f, 0.18f), 0.95f, null, null, null, 0f, new Color(0.25f, 0.35f, 0.65f) * 1.4f);
-            LitMat(ctx, "M_Ceramic", new Color(0.92f, 0.9f, 0.85f), 0.8f);
-            LitMat(ctx, "M_CardBack", new Color(0.55f, 0.12f, 0.12f), 0.45f);
-            LitMat(ctx, "M_Dice", new Color(0.95f, 0.93f, 0.88f), 0.7f);
-            LitMat(ctx, "M_BookA", new Color(0.45f, 0.12f, 0.10f), 0.3f);
-            LitMat(ctx, "M_BookB", new Color(0.12f, 0.25f, 0.40f), 0.3f);
-            LitMat(ctx, "M_BookC", new Color(0.18f, 0.35f, 0.20f), 0.3f);
-            LitMat(ctx, "M_BookD", new Color(0.65f, 0.5f, 0.2f), 0.3f);
-            LitMat(ctx, "M_Cursor", Color.white, 0.8f, null, null, null, 0f, Color.white);
+            for (int i = 0; i < 3; i++) LitMat(ctx, "M_BlockWood_" + i, new Color(0.86f, 0.82f, 0.76f), 0.28f, T($"T_BlockWood_{i}_Albedo.png"), blockNormal);
+            LitMat(ctx, "M_BlockEndGrain", new Color(0.8f, 0.75f, 0.7f), 0.2f, T("T_BlockEndGrain_Albedo.png"));
+
+            // room
+            LitMat(ctx, "M_TableWorn", Color.white, 0.38f, T("T_TableWorn_Albedo.png"), T("T_TableWorn_Normal.png"), null, 0f, null, false, 0.6f);
+            LitMat(ctx, "M_TableIron", new Color(0.09f, 0.085f, 0.08f), 0.35f, null, null, null, 0.8f);
+            LitMat(ctx, "M_Concrete", Color.white, 0.12f, T("T_Concrete_Albedo.png"), T("T_Concrete_Normal.png"), null, 0f, null, false, 0.9f);
+            LitMat(ctx, "M_ConcreteFloor", new Color(0.85f, 0.85f, 0.85f), 0.18f, T("T_ConcreteFloor_Albedo.png"), T("T_ConcreteFloor_Normal.png"), null, 0f, null, false, 0.9f);
+            LitMat(ctx, "M_ConcreteCeiling", new Color(0.45f, 0.45f, 0.45f), 0.05f, T("T_Concrete_Albedo.png"), T("T_Concrete_Normal.png"));
+            LitMat(ctx, "M_ChairWood", new Color(0.32f, 0.26f, 0.22f), 0.3f, T("T_TableWorn_Albedo.png"), T("T_TableWorn_Normal.png"), new Vector2(0.5f, 0.5f));
+            LitMat(ctx, "M_LampEnamel", new Color(0.12f, 0.15f, 0.13f), 0.55f, null, null, null, 0.3f, null, true);
+            LitMat(ctx, "M_RustedSteel", new Color(0.16f, 0.12f, 0.1f), 0.3f, null, null, null, 0.7f);
+            LitMat(ctx, "M_Bulb", new Color(1f, 0.9f, 0.7f), 0.9f, null, null, null, 0f, new Color(1f, 0.72f, 0.4f) * 8f);
+            LitMat(ctx, "M_Door", new Color(0.13f, 0.12f, 0.11f), 0.3f, null, null, null, 0.75f);
+
+            // characters (placeholders)
+            LitMat(ctx, "M_Skin", new Color(0.70f, 0.58f, 0.52f), 0.38f);
+            LitMat(ctx, "M_Cloth", new Color(0.19f, 0.17f, 0.155f), 0.12f);
+            LitMat(ctx, "M_Hood", new Color(0.15f, 0.14f, 0.135f), 0.08f);
+            LitMat(ctx, "M_Cursor", Palette.Lamp, 0.6f, null, null, null, 0f, Palette.Lamp * 0.6f);
 
             // ghost (transparent unlit)
             var unlit = Shader.Find("Universal Render Pipeline/Unlit");
             var ghost = LoadOrCreate(Mats + "/M_Ghost.mat", () => new Material(unlit));
             ghost.shader = unlit;
             RuntimeArt.MakeTransparent(ghost);
-            ghost.SetColor("_BaseColor", new Color(1f, 0.9f, 0.6f, 0.3f));
+            ghost.SetColor("_BaseColor", new Color(0.9f, 0.85f, 0.7f, 0.25f));
             EditorUtility.SetDirty(ghost);
             ctx.M["M_Ghost"] = ghost;
 
@@ -271,13 +311,13 @@ namespace SecretJenga.EditorTools
             dust.shader = pShader;
             RuntimeArt.MakeTransparent(dust);
             dust.SetTexture("_BaseMap", T("T_DustParticle.png"));
-            dust.SetColor("_BaseColor", new Color(0.9f, 0.82f, 0.7f, 0.6f));
+            dust.SetColor("_BaseColor", new Color(0.6f, 0.58f, 0.55f, 0.5f));
             EditorUtility.SetDirty(dust);
             ctx.M["M_Dust"] = dust;
         }
 
         // ------------------------------------------------------------------ Meshes
-        static Mesh SaveMesh(Ctx ctx, Mesh mesh, string name, bool exportObj = false)
+        static Mesh SaveMesh(Ctx ctx, Mesh mesh, string name)
         {
             var path = Models + "/" + name + ".asset";
             var existing = AssetDatabase.LoadAssetAtPath<Mesh>(path);
@@ -294,34 +334,34 @@ namespace SecretJenga.EditorTools
                 mesh.name = name;
                 AssetDatabase.CreateAsset(mesh, path);
             }
-            if (exportObj) ObjExporter.Export(mesh, Models + "/OBJ/" + name + ".obj");
             ctx.Mesh[name] = mesh;
             return mesh;
         }
 
+        const float RoomHalf = 36f;
+        const float CeilingY = 34f;
+
         static void CreateMeshes(Ctx ctx)
         {
-            SaveMesh(ctx, ProceduralMeshes.JengaBlock(), "SJ_JengaBlock", true);
-            SaveMesh(ctx, ProceduralMeshes.TableTop(), "SJ_TableTop", true);
-            SaveMesh(ctx, ProceduralMeshes.TableLeg(), "SJ_TableLeg", true);
-            SaveMesh(ctx, ProceduralMeshes.Apron(12.2f), "SJ_ApronLong");
-            SaveMesh(ctx, ProceduralMeshes.Apron(7.8f), "SJ_ApronShort");
-            SaveMesh(ctx, ProceduralMeshes.LampShade(), "SJ_LampShade", true);
-            SaveMesh(ctx, ProceduralMeshes.UVSphere(0.28f, 16, 24, "SJ_Bulb"), "SJ_Bulb");
-            SaveMesh(ctx, ProceduralMeshes.Lathe(new[] { new Vector2(0.03f, 0f), new Vector2(0.03f, 10f) }, 8, false, false, "SJ_Cord"), "SJ_Cord");
-            SaveMesh(ctx, ProceduralMeshes.Mug(), "SJ_Mug", true);
-            SaveMesh(ctx, ProceduralMeshes.Plane(90f, 90f, 1f, 1f, "SJ_Floor"), "SJ_Floor");
-            SaveMesh(ctx, ProceduralMeshes.Plane(18f, 12f, 1f, 1f, "SJ_Rug"), "SJ_Rug");
-            SaveMesh(ctx, ProceduralMeshes.BeveledBox(new Vector3(90f, 34f, 0.6f), 0.05f, false, new Vector2(7f, 7f), "SJ_Wall"), "SJ_Wall");
-            SaveMesh(ctx, ProceduralMeshes.BeveledBox(new Vector3(90f, 1.4f, 0.9f), 0.12f, false, new Vector2(6f, 6f), "SJ_Baseboard"), "SJ_Baseboard");
-            SaveMesh(ctx, ProceduralMeshes.BeveledBox(new Vector3(0.9f, 0.03f, 1.3f), 0.01f, false, new Vector2(1f, 1f), "SJ_Card"), "SJ_Card");
-            SaveMesh(ctx, ProceduralMeshes.BeveledBox(new Vector3(0.42f, 0.42f, 0.42f), 0.08f, false, new Vector2(1f, 1f), "SJ_Dice"), "SJ_Dice");
-            SaveMesh(ctx, ProceduralMeshes.BeveledBox(new Vector3(0.35f, 2.2f, 1.6f), 0.04f, false, new Vector2(2f, 2f), "SJ_Book"), "SJ_Book");
-            SaveMesh(ctx, ProceduralMeshes.BeveledBox(new Vector3(5.5f, 0.3f, 1.9f), 0.05f, false, new Vector2(5f, 5f), "SJ_Shelf"), "SJ_Shelf");
-            SaveMesh(ctx, ProceduralMeshes.BeveledBox(new Vector3(0.3f, 12f, 1.9f), 0.05f, false, new Vector2(5f, 5f), "SJ_ShelfSide"), "SJ_ShelfSide");
-            SaveMesh(ctx, ProceduralMeshes.BeveledBox(new Vector3(8f, 10f, 0.2f), 0.02f, false, new Vector2(8f, 8f), "SJ_WindowGlass"), "SJ_WindowGlass");
-            SaveMesh(ctx, ProceduralMeshes.BeveledBox(new Vector3(8.8f, 0.5f, 0.6f), 0.08f, false, new Vector2(4f, 4f), "SJ_WindowBarH"), "SJ_WindowBarH");
-            SaveMesh(ctx, ProceduralMeshes.BeveledBox(new Vector3(0.5f, 10.8f, 0.6f), 0.08f, false, new Vector2(4f, 4f), "SJ_WindowBarV"), "SJ_WindowBarV");
+            float wallH = CeilingY - SeatLayout.FloorY;
+            SaveMesh(ctx, ProceduralMeshes.JengaBlock(), "SJ_JengaBlock");
+            SaveMesh(ctx, ProceduralMeshes.RoundTableTop(SeatLayout.TableRadius, 0.6f), "TLB_TableTop");
+            SaveMesh(ctx, ProceduralMeshes.Cylinder(SeatLayout.TableRadius, 0.6f, 40, "TLB_TableCollider"), "TLB_TableCollider");
+            SaveMesh(ctx, ProceduralMeshes.Lathe(new[]
+            {
+                new Vector2(4.2f, 0f), new Vector2(4.2f, 0.5f), new Vector2(3.0f, 0.9f), new Vector2(1.0f, 1.6f), new Vector2(0.75f, 2.4f),
+                new Vector2(0.7f, 12.4f), new Vector2(1.6f, 12.9f), new Vector2(2.6f, 13.4f)
+            }, 32, true, true, "TLB_TableBase", 3f), "TLB_TableBase");
+            SaveMesh(ctx, ProceduralMeshes.Chair(), "TLB_Chair");
+            SaveMesh(ctx, ProceduralMeshes.IndustrialShade(), "TLB_Shade");
+            SaveMesh(ctx, ProceduralMeshes.UVSphere(0.36f, 14, 20, "TLB_Bulb"), "TLB_Bulb");
+            SaveMesh(ctx, ProceduralMeshes.Cylinder(0.06f, CeilingY - SeatLayout.LampHeight, 8, "TLB_Cord"), "TLB_Cord");
+            SaveMesh(ctx, ProceduralMeshes.Plane(RoomHalf * 2f, RoomHalf * 2f, RoomHalf * 2f / 22f, RoomHalf * 2f / 22f, "TLB_Floor"), "TLB_Floor");
+            SaveMesh(ctx, ProceduralMeshes.BeveledBox(new Vector3(RoomHalf * 2f, wallH, 1f), 0.05f, false, new Vector2(24f, 24f), "TLB_Wall"), "TLB_Wall");
+            SaveMesh(ctx, ProceduralMeshes.Pipe(0.7f, RoomHalf * 2f), "TLB_PipeLong");
+            SaveMesh(ctx, ProceduralMeshes.Pipe(0.45f, RoomHalf * 2f), "TLB_PipeThin");
+            SaveMesh(ctx, ProceduralMeshes.BeveledBox(new Vector3(14f, 26f, 0.8f), 0.15f, false, new Vector2(14f, 26f), "TLB_Door"), "TLB_Door");
+            SaveMesh(ctx, ProceduralMeshes.BeveledBox(new Vector3(17f, 28.5f, 0.6f), 0.1f, false, new Vector2(17f, 28f), "TLB_DoorFrame"), "TLB_DoorFrame");
             AssetDatabase.SaveAssets();
         }
 
@@ -330,7 +370,7 @@ namespace SecretJenga.EditorTools
         {
             var p = so.FindProperty(name);
             if (p != null) set(p);
-            else Debug.LogWarning($"[SecretJenga] Serialized property '{name}' not found on {so.targetObject.GetType().Name} (package version difference) - left at default.");
+            else Debug.LogWarning($"[TheLastBlock] Serialized property '{name}' not found on {so.targetObject.GetType().Name} (package version difference) - left at default.");
         }
 
         static void CreateBlockPrefab(Ctx ctx)
@@ -376,15 +416,18 @@ namespace SecretJenga.EditorTools
                 go.AddComponent<NetworkObject>();
                 go.AddComponent<TurnManager>();
                 go.AddComponent<JengaTower>();
-                go.AddComponent<SecretMissionManager>();
+                go.AddComponent<SecretTaskManager>();
+                go.AddComponent<CardManager>();
                 go.AddComponent<TowerStabilityChecker>();
+                go.AddComponent<AtmosphereSync>();
+                go.AddComponent<HandSync>();
                 go.AddComponent<NetworkGameManager>();
                 ctx.SessionPrefab = PrefabUtility.SaveAsPrefabAsset(go, Prefabs + "/SJ_Session.prefab");
             }
             finally { Object.DestroyImmediate(go); }
         }
 
-        static GameObject Part(Transform parent, string name, Mesh mesh, Material mat, Vector3 pos, Vector3 euler, bool collider = false, bool castShadows = true)
+        static GameObject Part(Transform parent, string name, Mesh mesh, Material mat, Vector3 pos, Vector3 euler, bool castShadows = true)
         {
             var go = new GameObject(name);
             go.transform.SetParent(parent, false);
@@ -394,108 +437,70 @@ namespace SecretJenga.EditorTools
             var mr = go.AddComponent<MeshRenderer>();
             mr.sharedMaterial = mat;
             mr.shadowCastingMode = castShadows ? ShadowCastingMode.On : ShadowCastingMode.Off;
-            if (collider)
-            {
-                var bc = go.AddComponent<BoxCollider>();
-                bc.size = mesh.bounds.size;
-                bc.center = mesh.bounds.center;
-            }
             go.isStatic = true;
             return go;
         }
 
+        /// <summary>
+        /// The isolated underground room: worn round table on an iron pedestal, five chairs, one hanging industrial
+        /// lamp, bare concrete, a few pipes and a shut steel door. Deliberately sparse - the tower is the focus.
+        /// (The lamp itself is created in the scene so its lights can be wired to the AtmosphereDirector.)
+        /// </summary>
         static void CreateEnvironmentPrefab(Ctx ctx)
         {
-            var root = new GameObject("SJ_Environment");
+            var root = new GameObject("TLB_Room");
             try
             {
                 var M = ctx.M;
                 var me = ctx.Mesh;
-                const float floorY = -11.5f;
+                float floorY = SeatLayout.FloorY;
+                float wallMid = (CeilingY + floorY) * 0.5f;
 
-                // table (top surface at y = 0)
+                // table (top surface at y = 0) - the top has a collider so blocks rest and fall on it
                 var table = new GameObject("Table").transform;
                 table.SetParent(root.transform, false);
-                Part(table, "TableTop", me["SJ_TableTop"], M["M_TableWalnut"], new Vector3(0, -0.25f, 0), Vector3.zero, true);
-                foreach (var (x, z) in new[] { (6.1f, 3.9f), (-6.1f, 3.9f), (6.1f, -3.9f), (-6.1f, -3.9f) })
-                    Part(table, "Leg", me["SJ_TableLeg"], M["M_TableLeg"], new Vector3(x, -0.5f, z), Vector3.zero);
-                Part(table, "ApronN", me["SJ_ApronLong"], M["M_TableLeg"], new Vector3(0, -0.95f, 3.95f), Vector3.zero);
-                Part(table, "ApronS", me["SJ_ApronLong"], M["M_TableLeg"], new Vector3(0, -0.95f, -3.95f), Vector3.zero);
-                Part(table, "ApronE", me["SJ_ApronShort"], M["M_TableLeg"], new Vector3(6.15f, -0.95f, 0), new Vector3(0, 90, 0));
-                Part(table, "ApronW", me["SJ_ApronShort"], M["M_TableLeg"], new Vector3(-6.15f, -0.95f, 0), new Vector3(0, 90, 0));
+                Part(table, "TableTop", me["TLB_TableTop"], M["M_TableWorn"], Vector3.zero, Vector3.zero);
+                var tableCol = new GameObject("TableCollider"); // round (static, non-convex) so blocks can fall off the edge
+                tableCol.transform.SetParent(table, false);
+                tableCol.transform.localPosition = new Vector3(0f, -0.3f, 0f); // 0.6 thick cylinder: top at y = 0
+                tableCol.AddComponent<MeshCollider>().sharedMesh = me["TLB_TableCollider"];
+                tableCol.isStatic = true;
+                Part(table, "Pedestal", me["TLB_TableBase"], M["M_TableIron"], new Vector3(0f, floorY, 0f), Vector3.zero);
 
-                // table props
-                var props = new GameObject("Props").transform;
-                props.SetParent(root.transform, false);
-                Part(props, "Mug", me["SJ_Mug"], M["M_Ceramic"], new Vector3(4.6f, 0f, 2.4f), Vector3.zero, true);
-                for (int i = 0; i < 6; i++)
-                    Part(props, "Card" + i, me["SJ_Card"], M["M_CardBack"], new Vector3(-4.7f + i * 0.02f, 0.015f + i * 0.032f, -2.6f + i * 0.015f), new Vector3(0, 12 + i * 7, 0), i == 0);
-                Part(props, "Card_Loose", me["SJ_Card"], M["M_CardBack"], new Vector3(-3.6f, 0.015f, -3.3f), new Vector3(0, -25, 0));
-                Part(props, "DiceA", me["SJ_Dice"], M["M_Dice"], new Vector3(-5.2f, 0.21f, 2.7f), new Vector3(0, 20, 0), true);
-                Part(props, "DiceB", me["SJ_Dice"], M["M_Dice"], new Vector3(-4.5f, 0.21f, 3.1f), new Vector3(0, -35, 0), true);
-
-                // room
-                var room = new GameObject("Room").transform;
-                room.SetParent(root.transform, false);
-                var floor = Part(room, "Floor", me["SJ_Floor"], M["M_FloorOak"], new Vector3(0, floorY, 0), Vector3.zero);
-                var fc = floor.AddComponent<BoxCollider>();
-                fc.size = new Vector3(90, 0.2f, 90);
-                fc.center = new Vector3(0, -0.1f, 0);
-                Part(room, "Rug", me["SJ_Rug"], M["M_Rug"], new Vector3(0, floorY + 0.02f, 0), Vector3.zero, false, false);
-                Part(room, "Ceiling", me["SJ_Floor"], M["M_Ceiling"], new Vector3(0, floorY + 32f, 0), new Vector3(180, 0, 0), false, false);
-                Part(room, "WallN", me["SJ_Wall"], M["M_Wallpaper"], new Vector3(0, floorY + 16f, 30f), Vector3.zero);
-                Part(room, "WallS", me["SJ_Wall"], M["M_Wallpaper"], new Vector3(0, floorY + 16f, -30f), Vector3.zero);
-                Part(room, "WallE", me["SJ_Wall"], M["M_Wallpaper"], new Vector3(30f, floorY + 16f, 0), new Vector3(0, 90, 0));
-                Part(room, "WallW", me["SJ_Wall"], M["M_Wallpaper"], new Vector3(-30f, floorY + 16f, 0), new Vector3(0, 90, 0));
-                Part(room, "BaseN", me["SJ_Baseboard"], M["M_WallTrim"], new Vector3(0, floorY + 0.7f, 29.6f), Vector3.zero);
-                Part(room, "BaseS", me["SJ_Baseboard"], M["M_WallTrim"], new Vector3(0, floorY + 0.7f, -29.6f), Vector3.zero);
-                Part(room, "BaseE", me["SJ_Baseboard"], M["M_WallTrim"], new Vector3(29.6f, floorY + 0.7f, 0), new Vector3(0, 90, 0));
-                Part(room, "BaseW", me["SJ_Baseboard"], M["M_WallTrim"], new Vector3(-29.6f, floorY + 0.7f, 0), new Vector3(0, 90, 0));
-
-                // window on the north wall
-                var win = new GameObject("Window").transform;
-                win.SetParent(room, false);
-                win.localPosition = new Vector3(-8f, floorY + 17f, 29.6f);
-                Part(win, "Glass", me["SJ_WindowGlass"], M["M_Window"], Vector3.zero, Vector3.zero, false, false);
-                Part(win, "Top", me["SJ_WindowBarH"], M["M_WallTrim"], new Vector3(0, 5.15f, -0.2f), Vector3.zero);
-                Part(win, "Bottom", me["SJ_WindowBarH"], M["M_WallTrim"], new Vector3(0, -5.15f, -0.2f), Vector3.zero);
-                Part(win, "MidH", me["SJ_WindowBarH"], M["M_WallTrim"], new Vector3(0, 0, -0.2f), Vector3.zero);
-                Part(win, "Left", me["SJ_WindowBarV"], M["M_WallTrim"], new Vector3(-4.15f, 0, -0.2f), Vector3.zero);
-                Part(win, "Right", me["SJ_WindowBarV"], M["M_WallTrim"], new Vector3(4.15f, 0, -0.2f), Vector3.zero);
-                Part(win, "MidV", me["SJ_WindowBarV"], M["M_WallTrim"], new Vector3(0, 0, -0.2f), Vector3.zero);
-
-                // bookshelf on the east wall
-                var shelf = new GameObject("Bookshelf").transform;
-                shelf.SetParent(room, false);
-                shelf.localPosition = new Vector3(28.6f, floorY, 6f);
-                shelf.localEulerAngles = new Vector3(0, -90, 0);
-                Part(shelf, "SideL", me["SJ_ShelfSide"], M["M_TableLeg"], new Vector3(-2.75f, 6f, 0), Vector3.zero);
-                Part(shelf, "SideR", me["SJ_ShelfSide"], M["M_TableLeg"], new Vector3(2.75f, 6f, 0), Vector3.zero);
-                var bookMats = new[] { M["M_BookA"], M["M_BookB"], M["M_BookC"], M["M_BookD"] };
-                var rnd = new System.Random(5);
-                for (int s = 0; s < 5; s++)
+                // chairs
+                var chairs = new GameObject("Chairs").transform;
+                chairs.SetParent(root.transform, false);
+                var rnd = new System.Random(7);
+                for (int s = 0; s < SeatLayout.SeatCount; s++)
                 {
-                    float y = 0.15f + s * 2.9f;
-                    Part(shelf, "Shelf" + s, me["SJ_Shelf"], M["M_TableLeg"], new Vector3(0, y, 0), Vector3.zero);
-                    if (s == 4) break;
-                    float x = -2.4f;
-                    while (x < 2.2f)
-                    {
-                        float tilt = rnd.NextDouble() < 0.1 ? 12f : 0f;
-                        Part(shelf, "Book", me["SJ_Book"], bookMats[rnd.Next(bookMats.Length)], new Vector3(x + 0.18f, y + 0.15f + 1.1f, 0.1f), new Vector3(0, 0, tilt));
-                        x += 0.38f + (float)rnd.NextDouble() * 0.06f;
-                    }
+                    var c = Part(chairs, "Chair_" + (s + 1), me["TLB_Chair"], M["M_ChairWood"], SeatLayout.ChairPosition(s), Vector3.zero);
+                    c.transform.rotation = SeatLayout.Facing(s) * Quaternion.Euler(0f, (float)(rnd.NextDouble() - 0.5) * 6f, 0f);
                 }
 
-                // pendant lamp above the tower
-                var lamp = new GameObject("PendantLamp").transform;
-                lamp.SetParent(root.transform, false);
-                lamp.localPosition = new Vector3(0, 9.5f, 0);
-                Part(lamp, "Cord", me["SJ_Cord"], M["M_Brass"], Vector3.zero, Vector3.zero, false, false);
-                Part(lamp, "Shade", me["SJ_LampShade"], M["M_LampShade"], Vector3.zero, Vector3.zero, false, false);
-                Part(lamp, "Bulb", me["SJ_Bulb"], M["M_Bulb"], new Vector3(0, -0.45f, 0), Vector3.zero, false, false);
+                // room shell
+                var room = new GameObject("Room").transform;
+                room.SetParent(root.transform, false);
+                var floor = Part(room, "Floor", me["TLB_Floor"], M["M_ConcreteFloor"], new Vector3(0, floorY, 0), Vector3.zero);
+                var fc = floor.AddComponent<BoxCollider>();
+                fc.size = new Vector3(RoomHalf * 2f, 0.2f, RoomHalf * 2f);
+                fc.center = new Vector3(0, -0.1f, 0);
+                Part(room, "Ceiling", me["TLB_Floor"], M["M_ConcreteCeiling"], new Vector3(0, CeilingY, 0), new Vector3(180, 0, 0), false);
+                Part(room, "WallN", me["TLB_Wall"], M["M_Concrete"], new Vector3(0, wallMid, RoomHalf), Vector3.zero);
+                Part(room, "WallS", me["TLB_Wall"], M["M_Concrete"], new Vector3(0, wallMid, -RoomHalf), Vector3.zero);
+                Part(room, "WallE", me["TLB_Wall"], M["M_Concrete"], new Vector3(RoomHalf, wallMid, 0), new Vector3(0, 90, 0));
+                Part(room, "WallW", me["TLB_Wall"], M["M_Concrete"], new Vector3(-RoomHalf, wallMid, 0), new Vector3(0, 90, 0));
 
-                ctx.EnvPrefab = PrefabUtility.SaveAsPrefabAsset(root, Prefabs + "/SJ_Environment.prefab");
+                // a few pipes and a shut steel door - just enough to say "basement"
+                var details = new GameObject("Details").transform;
+                details.SetParent(room, false);
+                Part(details, "PipeCeilingA", me["TLB_PipeLong"], M["M_RustedSteel"], new Vector3(0, CeilingY - 2.2f, 14f), Vector3.zero);
+                Part(details, "PipeCeilingB", me["TLB_PipeThin"], M["M_RustedSteel"], new Vector3(0, CeilingY - 3.6f, 16f), Vector3.zero);
+                Part(details, "PipeWallE", me["TLB_PipeThin"], M["M_RustedSteel"], new Vector3(RoomHalf - 1.4f, floorY + 30f, 0f), new Vector3(0, 90, 0));
+                Part(details, "PipeWallE2", me["TLB_PipeThin"], M["M_RustedSteel"], new Vector3(RoomHalf - 1.4f, floorY + 27.8f, 0f), new Vector3(0, 90, 0));
+                Part(details, "DoorFrame", me["TLB_DoorFrame"], M["M_RustedSteel"], new Vector3(-12f, floorY + 14.25f, RoomHalf - 0.6f), Vector3.zero);
+                Part(details, "Door", me["TLB_Door"], M["M_Door"], new Vector3(-12f, floorY + 13f, RoomHalf - 1.0f), Vector3.zero);
+
+                ctx.EnvPrefab = PrefabUtility.SaveAsPrefabAsset(root, Prefabs + "/TLB_Room.prefab");
             }
             finally { Object.DestroyImmediate(root); }
         }
@@ -509,6 +514,43 @@ namespace SecretJenga.EditorTools
             ctx.PrefabList = list;
         }
 
+        // ------------------------------------------------------------------ Tasks + cards (data driven)
+        /// <summary>
+        /// Creates the default task/card assets once (existing assets are never overwritten, so tuning done in the
+        /// Inspector survives regeneration). Every TaskDefinition / CardDefinition in the Data folders is registered,
+        /// sorted by file name - the order must be the same on every build because indices are sent over the network.
+        /// </summary>
+        static void CreateContent(Ctx ctx)
+        {
+            int i = 1;
+            foreach (var d in TaskDefinition.CreateDefaults())
+            {
+                var path = $"{TaskDir}/{i++:00}_{d.title.Replace(" ", "")}.asset";
+                if (AssetDatabase.LoadAssetAtPath<TaskDefinition>(path) == null) AssetDatabase.CreateAsset(d, path);
+                else Object.DestroyImmediate(d);
+            }
+            i = 1;
+            foreach (var d in CardDefinition.CreateDefaults())
+            {
+                var path = $"{CardDir}/{i++:00}_{d.title.Replace(" ", "")}.asset";
+                if (AssetDatabase.LoadAssetAtPath<CardDefinition>(path) == null) AssetDatabase.CreateAsset(d, path);
+                else Object.DestroyImmediate(d);
+            }
+            AssetDatabase.SaveAssets();
+            ctx.Tasks = LoadAllSorted<TaskDefinition>(TaskDir);
+            ctx.Cards = LoadAllSorted<CardDefinition>(CardDir);
+        }
+
+        static T[] LoadAllSorted<T>(string folder) where T : Object
+        {
+            var paths = new List<string>();
+            foreach (var guid in AssetDatabase.FindAssets("t:" + typeof(T).Name, new[] { folder })) paths.Add(AssetDatabase.GUIDToAssetPath(guid));
+            paths.Sort(StringComparer.Ordinal);
+            var list = new List<T>();
+            foreach (var p in paths) { var a = AssetDatabase.LoadAssetAtPath<T>(p); if (a != null) list.Add(a); }
+            return list.ToArray();
+        }
+
         // ------------------------------------------------------------------ Registry
         static Sprite S(string file) => AssetDatabase.LoadAssetAtPath<Sprite>(UITex + "/" + file + ".png");
         static AudioClip AC(string file) => AssetDatabase.LoadAssetAtPath<AudioClip>(Audio + "/" + file + ".wav");
@@ -518,63 +560,87 @@ namespace SecretJenga.EditorTools
             var r = LoadOrCreate(Res + "/SecretJengaAssets.asset", ScriptableObject.CreateInstance<SecretJengaAssets>);
             r.blockPrefab = ctx.BlockPrefab;
             r.sessionPrefab = ctx.SessionPrefab;
+            r.tasks = ctx.Tasks;
+            r.cards = ctx.Cards;
             r.blockMesh = ctx.Mesh["SJ_JengaBlock"];
             r.woodMaterials = new[] { ctx.M["M_BlockWood_0"], ctx.M["M_BlockWood_1"], ctx.M["M_BlockWood_2"] };
             r.endGrainMaterial = ctx.M["M_BlockEndGrain"];
             r.ghostMaterial = ctx.M["M_Ghost"];
             r.cursorMaterial = ctx.M["M_Cursor"];
             r.dustMaterial = ctx.M["M_Dust"];
+            r.skinMaterial = ctx.M["M_Skin"];
+            r.clothMaterial = ctx.M["M_Cloth"];
+            r.hoodMaterial = ctx.M["M_Hood"];
 
             r.panel = S("UI_Panel"); r.button = S("UI_Button"); r.rounded = S("UI_Rounded"); r.pill = S("UI_Pill");
             r.circle = S("UI_Circle"); r.glow = S("UI_Glow"); r.card = S("UI_Card"); r.vignette = S("UI_Vignette");
-            r.missionIcons = new[]
-            {
-                S("Icon_Star"), S("Icon_Architect"), S("Icon_Speed"), S("Icon_ColorHunter"), S("Icon_Guardian"),
-                S("Icon_Saboteur"), S("Icon_Master"), S("Icon_RiskTaker")
-            };
             r.iconStar = S("Icon_Star"); r.iconCrown = S("Icon_Crown"); r.iconClock = S("Icon_Clock"); r.iconCheck = S("Icon_Check");
             r.iconCross = S("Icon_Cross"); r.iconCopy = S("Icon_Copy"); r.iconGear = S("Icon_Gear"); r.iconRefresh = S("Icon_Refresh");
             r.iconPerson = S("Icon_Person"); r.iconSecret = S("Icon_Secret");
 
+            // paper, ink and type
+            r.paper = S("UI_Paper"); r.paperSlip = S("UI_PaperSlip"); r.cardStock = S("UI_CardStock"); r.tape = S("UI_Tape");
+            r.inkStroke = S("UI_InkStroke"); r.tallyStroke = S("UI_TallyStroke"); r.inkCircle = S("UI_InkCircle"); r.inkBlot = S("UI_InkBlot");
+            r.stamp = S("UI_Stamp");
+            r.iconCardSteady = S("Icon_Card_SteadyGrip"); r.iconCardPressure = S("Icon_Card_Pressure"); r.iconCardSecond = S("Icon_Card_SecondChance");
+            r.fontTitle = AssetDatabase.LoadAssetAtPath<Font>(Root + "/Fonts/IMFeENsc28P.ttf");
+            r.fontBody = AssetDatabase.LoadAssetAtPath<Font>(Root + "/Fonts/IMFeENrm28P.ttf");
+            r.fontType = AssetDatabase.LoadAssetAtPath<Font>(Root + "/Fonts/SpecialElite-Regular.ttf");
+            if (r.fontTitle == null || r.fontBody == null || r.fontType == null)
+                Debug.LogWarning("[TheLastBlock] UI fonts missing in Assets/SecretJenga/Fonts - the UI falls back to the default font.");
+
             r.blockHits = new[] { AC("SFX_BlockHit_0"), AC("SFX_BlockHit_1"), AC("SFX_BlockHit_2") };
             r.blockPlace = AC("SFX_BlockPlace"); r.blockSlideLoop = AC("SFX_BlockSlide_Loop"); r.blockGrab = AC("SFX_BlockGrab");
-            r.towerCollapse = AC("SFX_TowerCollapse"); r.uiHover = AC("UI_Hover"); r.uiClick = AC("UI_Click");
+            r.towerCollapse = AC("SFX_TowerCollapse"); r.woodStrainLoop = AC("SFX_WoodStrain_Loop");
+            r.music = AC("MUS_Ambient_Loop"); r.lampHumLoop = AC("SFX_LampHum_Loop"); r.flicker = AC("SFX_Flicker");
+            r.heartbeatLoop = AC("SFX_Heartbeat_Loop"); r.collapseSting = AC("SFX_CollapseSting");
+            r.chairCreaks = new[] { AC("SFX_ChairCreak_0"), AC("SFX_ChairCreak_1"), AC("SFX_ChairCreak_2") };
+            r.distantMetal = new[] { AC("SFX_MetalDistant_0"), AC("SFX_MetalDistant_1"), AC("SFX_MetalDistant_2") };
+            r.uiHover = AC("UI_Hover"); r.uiClick = AC("UI_Click");
             r.missionComplete = AC("SFX_MissionComplete"); r.turnStart = AC("SFX_TurnStart"); r.timerTick = AC("SFX_TimerTick");
             r.win = AC("SFX_Win"); r.lose = AC("SFX_Lose"); r.countdown = AC("SFX_Countdown"); r.error = AC("SFX_Error");
-            r.music = AC("MUS_Ambient_Loop");
+            r.cardPlayed = AC("SFX_CardPlayed");
             EditorUtility.SetDirty(r);
             ctx.Registry = r;
 
             int missing = 0;
-            foreach (var s in r.missionIcons) if (s == null) missing++;
-            if (r.panel == null) missing++;
+            if (r.paper == null) missing++;
             if (r.music == null) missing++;
-            if (missing > 0) Debug.LogWarning($"[SecretJenga] {missing} UI/audio assets were not found. The game uses fallbacks; regenerate textures/audio with the scripts in Assets/SecretJenga/Tools~.");
+            if (r.lampHumLoop == null || r.collapseSting == null) missing++;
+            if (missing > 0) Debug.LogWarning($"[TheLastBlock] {missing} UI/audio asset group(s) were not found. The game uses fallbacks/silence; regenerate them with the scripts in Assets/SecretJenga/Tools~.");
         }
 
         // ------------------------------------------------------------------ Post processing
         static void CreateVolumeProfile(Ctx ctx)
         {
-            var path = Scenes + "/SJ_PostProcess.asset";
+            var path = Scenes + "/TLB_PostProcess.asset";
             var old = AssetDatabase.LoadAssetAtPath<VolumeProfile>(path);
             if (old != null) AssetDatabase.DeleteAsset(path);
+            if (AssetDatabase.LoadAssetAtPath<VolumeProfile>(Scenes + "/SJ_PostProcess.asset") != null) AssetDatabase.DeleteAsset(Scenes + "/SJ_PostProcess.asset");
             var profile = ScriptableObject.CreateInstance<VolumeProfile>();
             AssetDatabase.CreateAsset(profile, path);
 
             var tone = profile.Add<Tonemapping>(true);
             tone.mode.Override(TonemappingMode.ACES);
             var bloom = profile.Add<Bloom>(true);
-            bloom.intensity.Override(0.7f);
-            bloom.threshold.Override(1.0f);
-            bloom.scatter.Override(0.65f);
+            bloom.intensity.Override(0.55f);
+            bloom.threshold.Override(1.1f);
+            bloom.scatter.Override(0.6f);
             var vig = profile.Add<Vignette>(true);
-            vig.intensity.Override(0.3f);
-            vig.smoothness.Override(0.45f);
+            vig.intensity.Override(0.32f);
+            vig.smoothness.Override(0.5f);
+            vig.color.Override(Color.black);
             var ca = profile.Add<ColorAdjustments>(true);
-            ca.postExposure.Override(0.35f);
-            ca.contrast.Override(12f);
-            ca.saturation.Override(8f);
-            ca.colorFilter.Override(new Color(1f, 0.96f, 0.9f));
+            ca.postExposure.Override(0.65f);
+            ca.contrast.Override(18f);
+            ca.saturation.Override(-16f);
+            ca.colorFilter.Override(new Color(1f, 0.95f, 0.88f));
+            var grain = profile.Add<FilmGrain>(true);
+            grain.type.Override(FilmGrainLookup.Medium2);
+            grain.intensity.Override(0.28f);
+            grain.response.Override(0.75f);
+            var chroma = profile.Add<ChromaticAberration>(true);
+            chroma.intensity.Override(0.08f);
 
             foreach (var c in profile.components)
             {
@@ -591,82 +657,83 @@ namespace SecretJenga.EditorTools
         {
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
-            // lighting / atmosphere
+            // lighting / atmosphere: dim but readable - you must see the faces and hands around the table; the far walls fade
             RenderSettings.ambientMode = AmbientMode.Trilight;
-            RenderSettings.ambientSkyColor = new Color(0.36f, 0.30f, 0.30f);
-            RenderSettings.ambientEquatorColor = new Color(0.25f, 0.18f, 0.13f);
-            RenderSettings.ambientGroundColor = new Color(0.10f, 0.07f, 0.05f);
+            RenderSettings.ambientSkyColor = new Color(0.12f, 0.11f, 0.10f);
+            RenderSettings.ambientEquatorColor = new Color(0.085f, 0.075f, 0.068f);
+            RenderSettings.ambientGroundColor = new Color(0.03f, 0.027f, 0.024f);
             RenderSettings.fog = true;
             RenderSettings.fogMode = FogMode.Exponential;
-            RenderSettings.fogDensity = 0.012f;
-            RenderSettings.fogColor = new Color(0.10f, 0.07f, 0.05f);
+            RenderSettings.fogDensity = 0.011f;
+            RenderSettings.fogColor = new Color(0.03f, 0.027f, 0.024f);
             RenderSettings.skybox = null;
-            var lighting = new LightingSettings { name = "SJ_Lighting", bakedGI = false, realtimeGI = false };
-            var lightingPath = Scenes + "/SJ_Lighting.lighting";
+            var lighting = new LightingSettings { name = "TLB_Lighting", bakedGI = false, realtimeGI = false };
+            var lightingPath = Scenes + "/TLB_Lighting.lighting";
             if (AssetDatabase.LoadAssetAtPath<LightingSettings>(lightingPath) != null) AssetDatabase.DeleteAsset(lightingPath);
+            if (AssetDatabase.LoadAssetAtPath<LightingSettings>(Scenes + "/SJ_Lighting.lighting") != null) AssetDatabase.DeleteAsset(Scenes + "/SJ_Lighting.lighting");
             AssetDatabase.CreateAsset(lighting, lightingPath);
             Lightmapping.lightingSettings = lighting;
 
-            // camera
+            // camera (seated first person; CameraController places it at the local player's chair)
             var camGo = new GameObject("Main Camera");
             camGo.tag = "MainCamera";
             var cam = camGo.AddComponent<Camera>();
-            cam.fieldOfView = 40f;
-            cam.nearClipPlane = 0.1f;
-            cam.farClipPlane = 250f;
+            cam.fieldOfView = 58f;
+            cam.nearClipPlane = 0.05f;
+            cam.farClipPlane = 160f;
             cam.clearFlags = CameraClearFlags.SolidColor;
-            cam.backgroundColor = new Color(0.08f, 0.05f, 0.04f);
+            cam.backgroundColor = Color.black;
             camGo.AddComponent<AudioListener>();
             camGo.AddComponent<CameraController>();
-            camGo.transform.position = new Vector3(-6, 5, -8);
-            camGo.transform.LookAt(new Vector3(0, 1.5f, 0));
+            camGo.transform.position = SeatLayout.EyePosition(0);
+            camGo.transform.LookAt(new Vector3(0, 2f, 0));
             var camData = cam.GetUniversalAdditionalCameraData();
             camData.renderPostProcessing = true;
             camData.antialiasing = AntialiasingMode.SubpixelMorphologicalAntiAliasing;
             camData.antialiasingQuality = AntialiasingQuality.High;
 
-            // lights
+            // room
+            var env = (GameObject)PrefabUtility.InstantiatePrefab(ctx.EnvPrefab, scene);
+            env.name = "Room";
+
+            // the hanging lamp: rig swings (AtmosphereDirector), lights are children so the light swings with it
+            var lampRig = new GameObject("LampRig").transform;
+            lampRig.position = new Vector3(0f, SeatLayout.LampHeight, 0f);
+            var cordGo = Part(lampRig, "Cord", ctx.Mesh["TLB_Cord"], ctx.M["M_RustedSteel"], new Vector3(0f, (CeilingY - SeatLayout.LampHeight) * 0.5f, 0f), Vector3.zero, false);
+            var shade = Part(lampRig, "Shade", ctx.Mesh["TLB_Shade"], ctx.M["M_LampEnamel"], Vector3.zero, Vector3.zero);
+            var bulb = Part(lampRig, "Bulb", ctx.Mesh["TLB_Bulb"], ctx.M["M_Bulb"], new Vector3(0f, -0.75f, 0f), Vector3.zero, false);
+            cordGo.isStatic = shade.isStatic = bulb.isStatic = false;
+
             var spot = new GameObject("Lamp Spot Light").AddComponent<Light>();
+            spot.transform.SetParent(lampRig, false);
+            spot.transform.localPosition = new Vector3(0f, -0.9f, 0f);
+            spot.transform.localRotation = Quaternion.Euler(90, 0, 0);
             spot.type = LightType.Spot;
-            spot.transform.position = new Vector3(0, 9.0f, 0);
-            spot.transform.rotation = Quaternion.Euler(90, 0, 0);
-            spot.color = new Color(1f, 0.84f, 0.64f);
-            spot.intensity = 90f;
-            spot.range = 40f;
-            spot.spotAngle = 95f;
-            spot.innerSpotAngle = 40f;
+            spot.color = new Color(1f, 0.8f, 0.58f);
+            spot.intensity = 150f;
+            spot.range = 48f;
+            spot.spotAngle = 128f;
+            spot.innerSpotAngle = 70f;
             spot.shadows = LightShadows.Soft;
-            spot.shadowStrength = 0.9f;
+            spot.shadowStrength = 0.95f;
             spot.shadowBias = 0.02f;
             spot.shadowNormalBias = 0.3f;
 
             var glow = new GameObject("Bulb Glow").AddComponent<Light>();
+            glow.transform.SetParent(lampRig, false);
+            glow.transform.localPosition = new Vector3(0f, -0.4f, 0f);
             glow.type = LightType.Point;
-            glow.transform.position = new Vector3(0, 9.3f, 0);
-            glow.color = new Color(1f, 0.78f, 0.5f);
-            glow.intensity = 4f;
-            glow.range = 4f;
+            glow.color = new Color(1f, 0.74f, 0.45f);
+            glow.intensity = 42f;
+            glow.range = 36f;
             glow.shadows = LightShadows.None;
 
-            var moon = new GameObject("Window Light").AddComponent<Light>();
-            moon.type = LightType.Directional;
-            moon.transform.rotation = Quaternion.Euler(35, 160, 0);
-            moon.color = new Color(0.55f, 0.65f, 0.95f);
-            moon.intensity = 0.35f;
-            moon.shadows = LightShadows.Soft;
-            moon.shadowStrength = 0.5f;
-
-            var fill = new GameObject("Warm Fill").AddComponent<Light>();
-            fill.type = LightType.Point;
-            fill.transform.position = new Vector3(-9, 6, -10);
-            fill.color = new Color(1f, 0.7f, 0.45f);
-            fill.intensity = 60f;
-            fill.range = 35f;
-            fill.shadows = LightShadows.None;
-
-            // environment
-            var env = (GameObject)PrefabUtility.InstantiatePrefab(ctx.EnvPrefab, scene);
-            env.name = "Environment";
+            var rim = new GameObject("Cold Rim (far door)").AddComponent<Light>();
+            rim.type = LightType.Directional;
+            rim.transform.rotation = Quaternion.Euler(18, 200, 0);
+            rim.color = new Color(0.45f, 0.55f, 0.75f);
+            rim.intensity = 0.16f;
+            rim.shadows = LightShadows.None;
 
             // post processing
             var volGo = new GameObject("Global Volume");
@@ -686,10 +753,12 @@ namespace SecretJenga.EditorTools
             nm.NetworkConfig.PlayerPrefab = null;
             nm.NetworkConfig.Prefabs.NetworkPrefabsLists.Clear();
             nm.NetworkConfig.Prefabs.NetworkPrefabsLists.Add(ctx.PrefabList);
+            utp.SetConnectionData("127.0.0.1", GameSettings.DefaultPort, "0.0.0.0");
             EditorUtility.SetDirty(nm);
+            EditorUtility.SetDirty(utp);
 
-            // game systems
-            var sys = new GameObject("SecretJenga Systems");
+            // game systems (local, non-networked)
+            var sys = new GameObject("TheLastBlock Systems");
             var boot = sys.AddComponent<GameBootstrap>();
             boot.assets = ctx.Registry;
             sys.AddComponent<MultiplayerServiceManager>();
@@ -700,6 +769,13 @@ namespace SecretJenga.EditorTools
             sys.AddComponent<EffectsManager>();
             var bic = sys.AddComponent<BlockInteractionController>();
             bic.cam = cam;
+            sys.AddComponent<PlayerAvatars>();
+            var atmos = sys.AddComponent<AtmosphereDirector>();
+            atmos.lampLight = spot;
+            atmos.bulbGlow = glow;
+            atmos.lampRig = lampRig;
+            atmos.bulbRenderer = bulb.GetComponent<MeshRenderer>();
+            atmos.volume = vol;
             sys.AddComponent<UIManager>();
 
             var showcase = new GameObject("Menu Showcase Tower");
@@ -713,14 +789,14 @@ namespace SecretJenga.EditorTools
 
             var list = new List<EditorBuildSettingsScene> { new EditorBuildSettingsScene(ScenePath, true) };
             foreach (var s in EditorBuildSettings.scenes)
-                if (s.path != ScenePath) list.Add(new EditorBuildSettingsScene(s.path, false));
+                if (s.path != ScenePath && s.path != OldScenePath) list.Add(new EditorBuildSettingsScene(s.path, false));
             EditorBuildSettings.scenes = list.ToArray();
         }
 
         // ------------------------------------------------------------------ Player settings
         static void ConfigureProjectSettings()
         {
-            PlayerSettings.productName = "Secret Jenga";
+            PlayerSettings.productName = "The Last Block";
             PlayerSettings.runInBackground = true;
             PlayerSettings.visibleInBackground = true;
             PlayerSettings.resizableWindow = true;
@@ -730,10 +806,10 @@ namespace SecretJenga.EditorTools
             PlayerSettings.forceSingleInstance = false;
         }
 
-        [MenuItem("Tools/Secret Jenga/Open Game Scene", priority = 1)]
+        [MenuItem("Tools/The Last Block/Open Game Scene", priority = 1)]
         public static void OpenScene()
         {
-            if (!File.Exists(ScenePath)) { EditorUtility.DisplayDialog("Secret Jenga", "Scene not generated yet. Run Tools > Secret Jenga > Generate Project.", "OK"); return; }
+            if (!File.Exists(ScenePath)) { EditorUtility.DisplayDialog("The Last Block", "Scene not generated yet. Run Tools > The Last Block > Generate Project.", "OK"); return; }
             if (EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) EditorSceneManager.OpenScene(ScenePath);
         }
     }

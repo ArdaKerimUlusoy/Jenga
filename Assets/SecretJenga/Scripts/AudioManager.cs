@@ -5,19 +5,24 @@ namespace SecretJenga
     /// <summary>
     /// All game audio. Clips come from the SecretJengaAssets registry (generated WAVs in Assets/SecretJenga/Audio).
     /// Every call is null-safe, so the game runs silently if a clip is missing.
+    ///
+    /// Risk is audible: the slide loop follows the speed of the held block (smooth friction), while a separate
+    /// wood-strain loop follows the tower's wobble - a dangerous pull creaks and groans, a clean one just slides.
+    /// The low drone bed rises slowly with tension but stays quiet enough to talk over.
     /// </summary>
     public class AudioManager : MonoBehaviour
     {
-        public enum Sfx { UIHover, UIClick, MissionComplete, TurnStart, TimerTick, Win, Lose, Countdown, Error, Place, Grab, Collapse }
+        public enum Sfx { UIHover, UIClick, MissionComplete, TurnStart, TimerTick, Win, Lose, Countdown, Error, Place, Grab, Collapse, CardPlayed }
 
         public static AudioManager Instance { get; private set; }
 
         const int PoolSize = 12;
-        AudioSource _music, _slide;
-        AudioSource[] _pool;
-        int _next;
+        const int SpatialPoolSize = 6;
+        AudioSource _music, _slide, _strain;
+        AudioSource[] _pool, _spatial;
+        int _next, _nextSpatial;
         float _hitBudget;
-        float _slideTarget;
+        float _slideTarget, _strainTarget, _droneTension;
 
         void Awake()
         {
@@ -29,10 +34,8 @@ namespace SecretJenga
             _music.playOnAwake = false;
             _music.spatialBlend = 0f;
 
-            _slide = gameObject.AddComponent<AudioSource>();
-            _slide.loop = true;
-            _slide.playOnAwake = false;
-            _slide.volume = 0f;
+            _slide = MakeLoopSource();
+            _strain = MakeLoopSource();
 
             _pool = new AudioSource[PoolSize];
             for (int i = 0; i < PoolSize; i++)
@@ -42,7 +45,31 @@ namespace SecretJenga
                 s.spatialBlend = 0f;
                 _pool[i] = s;
             }
+
+            _spatial = new AudioSource[SpatialPoolSize];
+            for (int i = 0; i < SpatialPoolSize; i++)
+            {
+                var go = new GameObject("SpatialVoice_" + i);
+                go.transform.SetParent(transform, false);
+                var s = go.AddComponent<AudioSource>();
+                s.playOnAwake = false;
+                s.spatialBlend = 1f;
+                s.rolloffMode = AudioRolloffMode.Logarithmic;
+                s.minDistance = 6f;
+                s.maxDistance = 90f;
+                s.dopplerLevel = 0f;
+                _spatial[i] = s;
+            }
             GameSettings.Changed += ApplyVolumes;
+        }
+
+        AudioSource MakeLoopSource()
+        {
+            var s = gameObject.AddComponent<AudioSource>();
+            s.loop = true;
+            s.playOnAwake = false;
+            s.volume = 0f;
+            return s;
         }
 
         void Start()
@@ -50,6 +77,7 @@ namespace SecretJenga
             var a = SecretJengaAssets.Instance;
             if (a.music != null) { _music.clip = a.music; _music.Play(); }
             if (a.blockSlideLoop != null) { _slide.clip = a.blockSlideLoop; _slide.Play(); }
+            if (a.woodStrainLoop != null) { _strain.clip = a.woodStrainLoop; _strain.Play(); }
             ApplyVolumes();
         }
 
@@ -62,27 +90,48 @@ namespace SecretJenga
         void ApplyVolumes()
         {
             AudioListener.volume = GameSettings.MasterVolume;
-            if (_music != null) _music.volume = GameSettings.MusicVolume * 0.35f;
         }
+
+        /// <summary>Called by the AtmosphereDirector every frame (0..1).</summary>
+        public void SetDroneTension(float t) => _droneTension = t;
 
         void Update()
         {
-            _hitBudget = Mathf.Min(6f, _hitBudget + Time.unscaledDeltaTime * 30f);
+            float dt = Time.unscaledDeltaTime;
+            _hitBudget = Mathf.Min(6f, _hitBudget + dt * 30f);
 
-            // Slide loop volume follows the speed of the block that is currently held.
-            float target = 0f;
-            var game = Game.NetworkGameManager.Instance;
-            if (game != null && game.IsSpawned && game.Turns != null && game.Turns.Stage.Value == TurnStage.Dragging)
+            if (_music != null)
             {
-                var b = Game.JengaBlock.Find(game.Turns.HeldBlockId.Value);
-                if (b != null) target = Mathf.Clamp01(_slideSpeed(b) / 1.2f) * 0.6f;
+                _music.volume = GameSettings.MusicVolume * Mathf.Lerp(0.22f, 0.5f, _droneTension);
+                _music.pitch = Mathf.Lerp(1f, 0.94f, _droneTension);
             }
-            _slideTarget = Mathf.Lerp(_slideTarget, target, 1f - Mathf.Exp(-12f * Time.unscaledDeltaTime));
+
+            // Slide loop follows the speed of the held block; strain loop follows the tower wobble while it is handled.
+            float slide = 0f, strain = 0f;
+            var game = Game.NetworkGameManager.Instance;
+            if (game != null && game.IsSpawned && game.Turns != null)
+            {
+                var stage = game.Turns.Stage.Value;
+                if (stage == TurnStage.Dragging)
+                {
+                    var b = Game.JengaBlock.Find(game.Turns.HeldBlockId.Value);
+                    if (b != null) slide = Mathf.Clamp01(SlideSpeed(b) / 1.2f) * 0.55f;
+                }
+                if (stage == TurnStage.Dragging || stage == TurnStage.Carrying || stage == TurnStage.Settling)
+                    strain = Mathf.Clamp01((game.Stability.Wobble.Value - 0.08f) / 0.5f);
+            }
+            _slideTarget = Mathf.Lerp(_slideTarget, slide, 1f - Mathf.Exp(-12f * dt));
+            _strainTarget = Mathf.Lerp(_strainTarget, strain, 1f - Mathf.Exp(-6f * dt));
             if (_slide != null) _slide.volume = _slideTarget * GameSettings.SfxVolume;
+            if (_strain != null)
+            {
+                _strain.volume = _strainTarget * 0.7f * GameSettings.SfxVolume;
+                _strain.pitch = Mathf.Lerp(0.9f, 0.75f, _strainTarget);
+            }
         }
 
         Vector3 _lastSlidePos;
-        float _slideSpeed(Game.JengaBlock b)
+        float SlideSpeed(Game.JengaBlock b)
         {
             var p = b.transform.position;
             float s = (p - _lastSlidePos).magnitude / Mathf.Max(Time.deltaTime, 1e-4f);
@@ -107,6 +156,7 @@ namespace SecretJenga
                 case Sfx.Place: return a.blockPlace;
                 case Sfx.Grab: return a.blockGrab;
                 case Sfx.Collapse: return a.towerCollapse;
+                case Sfx.CardPlayed: return a.cardPlayed;
             }
             return null;
         }
@@ -124,6 +174,19 @@ namespace SecretJenga
             src.Play();
         }
 
+        /// <summary>One-shot positioned in the room (3D), e.g. distant metal, chair creaks, lamp zaps.</summary>
+        public void PlayAt(AudioClip clip, Vector3 position, float volume = 1f, float pitch = 1f)
+        {
+            if (clip == null || _spatial == null) return;
+            var src = _spatial[_nextSpatial];
+            _nextSpatial = (_nextSpatial + 1) % _spatial.Length;
+            src.transform.position = position;
+            src.pitch = pitch;
+            src.volume = Mathf.Clamp01(volume * GameSettings.SfxVolume);
+            src.clip = clip;
+            src.Play();
+        }
+
         public void PlayBlockHit(Vector3 at, float intensity)
         {
             if (_hitBudget < 1f) return;
@@ -135,7 +198,12 @@ namespace SecretJenga
 
         public void PlayPlace(Vector3 at) => Play(Sfx.Place, 0.9f * Attenuation(at), Random.Range(0.95f, 1.05f));
         public void PlayGrab(Vector3 at) => Play(Sfx.Grab, 0.6f * Attenuation(at), Random.Range(0.95f, 1.08f));
-        public void PlayCollapse() => Play(Sfx.Collapse, 1f);
+
+        public void PlayCollapse()
+        {
+            Play(Sfx.Collapse, 1f);
+            PlayClip(SecretJengaAssets.Instance.collapseSting, 0.85f);
+        }
 
         static float Attenuation(Vector3 at)
         {

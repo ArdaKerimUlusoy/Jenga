@@ -20,83 +20,110 @@ namespace SecretJenga
         public static float LayerCenterY(int layer) => TableTopY + BlockHeight * 0.5f + layer * BlockHeight;
     }
 
-    public enum BlockColor : byte { Natural = 0, Red = 1, Blue = 2, Green = 3, Gold = 4 }
+    /// <summary>
+    /// Layout of the room: one round table in the middle, five fixed seats around it.
+    /// Seat k sits at angle 270 + 72k degrees (seat 0 is on the -Z side looking towards +Z).
+    /// </summary>
+    public static class SeatLayout
+    {
+        public const int SeatCount = 5;
+        public const float TableRadius = 8.2f;
+        public const float FloorY = -14f;          // table is ~70 cm high
+        public const float ChairRadius = 11.6f;    // chair center distance from the tower
+        public const float EyeRadius = 9.6f;      // seated eye distance from the tower
+        public const float EyeHeight = 6.4f;       // seated eye height above the table top
+        public const float LampHeight = 12f;
+
+        /// <summary>Order in which seats are handed out so that 2-4 players are spread around the table.</summary>
+        public static readonly int[] FillOrder = { 0, 3, 1, 4, 2 };
+
+        public static float AngleDeg(int seat) => 270f + 72f * Mathf.Repeat(seat, SeatCount);
+
+        /// <summary>Horizontal unit direction from the tower towards the seat.</summary>
+        public static Vector3 Outward(int seat)
+        {
+            float a = AngleDeg(seat) * Mathf.Deg2Rad;
+            return new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a));
+        }
+
+        public static Vector3 EyePosition(int seat) => Outward(seat) * EyeRadius + Vector3.up * (JengaDims.TableTopY + EyeHeight);
+        public static Vector3 ChairPosition(int seat) => Outward(seat) * ChairRadius + Vector3.up * FloorY;
+
+        /// <summary>Rotation of a body sitting in the seat, facing the tower.</summary>
+        public static Quaternion Facing(int seat) => Quaternion.LookRotation(-Outward(seat), Vector3.up);
+    }
 
     public enum GamePhase : byte { Lobby = 0, Countdown = 1, Playing = 2, GameOver = 3 }
 
     public enum TurnStage : byte { None = 0, WaitingForGrab = 1, Dragging = 2, Carrying = 3, Settling = 4 }
 
-    public enum MissionType : byte { None = 0, Architect = 1, SpeedDemon = 2, ColorHunter = 3, Guardian = 4, Saboteur = 5, Master = 6, RiskTaker = 7 }
+    /// <summary>Evaluators for secret personal tasks. A TaskDefinition asset picks one and supplies the numbers.</summary>
+    public enum TaskKind : byte { None = 0, RiskTaker = 1, SteadyHands = 2, CardCollector = 3, PressurePlayer = 4, TowerKeeper = 5, CarefulBuilder = 6 }
+
+    /// <summary>Effects of the experimental special cards. A CardDefinition asset picks one and supplies the numbers.</summary>
+    public enum CardKind : byte { None = 0, SteadyGrip = 1, Pressure = 2, SecondChance = 3 }
+
+    /// <summary>When a card may be played.</summary>
+    public enum CardTiming : byte { OwnTurnBeforeExtraction = 0, OwnTurnAnyStage = 1 }
+
+    /// <summary>Who a card affects.</summary>
+    public enum CardTarget : byte { Self = 0, NextPlayer = 1 }
+
+    /// <summary>Why a round ended (shown on the results screen).</summary>
+    public enum RoundEndReason : byte { None = 0, ObjectiveComplete = 1, TowerCollapsed = 2, NotEnoughPlayers = 3 }
 
     public static class GameRules
     {
         public const int MinPlayers = 2;
-        public const int MaxPlayers = 4;
-        public const int DefaultTargetHeight = 15;
-        public const int DefaultStartLayers = 10;
-        public const int DefaultTurnSeconds = 30;
-        public const int MinTargetHeight = 8;
-        public const int MaxTargetHeight = 30;
-        public const int MinStartLayers = 6;
+        public const int MaxPlayers = 5;
+
+        // Shared objective: "Keep the tower standing until the group completes N successful turns."
+        public const int DefaultRequiredTurns = 12;
+        public const int MinRequiredTurns = 4;
+        public const int MaxRequiredTurns = 40;
+
+        public const int DefaultStartLayers = 15;
+        public const int MinStartLayers = 8;
         public const int MaxStartLayers = 18;
-        public const float CountdownSeconds = 3f;
+
+        /// <summary>Turn timer in seconds. 0 = no timer.</summary>
+        public const int DefaultTurnSeconds = 60;
+        public const int MinTurnSeconds = 20;
+        public const int MaxTurnSeconds = 120;
+
+        public const float CountdownSeconds = 4f;
         public const float SettleMinSeconds = 1.2f;
         public const float SettleMaxSeconds = 6f;
         public const float SettleCalmSeconds = 0.6f;
-        public const float SpeedDemonSeconds = 10f;
-        public const string BuildVersion = "sj-1.0";
+        public const string BuildVersion = "tlb-0.1";
+        public const string GameTitle = "THE LAST BLOCK";
     }
 
+    /// <summary>Colors for a dark, restrained look. Player colors are muted so they read as small accents only.</summary>
     public static class Palette
     {
         public static readonly Color[] PlayerColors =
         {
-            new Color(0.93f, 0.36f, 0.30f), // coral
-            new Color(0.25f, 0.62f, 0.95f), // sky
-            new Color(0.40f, 0.80f, 0.42f), // leaf
-            new Color(0.98f, 0.76f, 0.26f), // sun
-            new Color(0.70f, 0.45f, 0.95f), // violet
-            new Color(0.20f, 0.82f, 0.78f), // teal
-            new Color(0.97f, 0.52f, 0.78f), // pink
-            new Color(0.95f, 0.60f, 0.25f), // orange
+            new Color(0.78f, 0.30f, 0.26f), // rust red
+            new Color(0.36f, 0.56f, 0.72f), // cold blue
+            new Color(0.48f, 0.66f, 0.42f), // moss
+            new Color(0.82f, 0.66f, 0.32f), // tarnished brass
+            new Color(0.62f, 0.46f, 0.72f), // faded violet
         };
 
         public static Color Player(int index) => PlayerColors[Mathf.Abs(index) % PlayerColors.Length];
 
-        public static Color BlockTint(BlockColor c)
-        {
-            switch (c)
-            {
-                case BlockColor.Red: return new Color(0.95f, 0.38f, 0.32f);
-                case BlockColor.Blue: return new Color(0.42f, 0.62f, 1.0f);
-                case BlockColor.Green: return new Color(0.48f, 0.85f, 0.45f);
-                case BlockColor.Gold: return new Color(1.0f, 0.82f, 0.38f);
-                default: return Color.white;
-            }
-        }
-
-        public static Color BlockUIColor(BlockColor c)
-        {
-            switch (c)
-            {
-                case BlockColor.Red: return new Color(0.90f, 0.28f, 0.24f);
-                case BlockColor.Blue: return new Color(0.26f, 0.50f, 0.95f);
-                case BlockColor.Green: return new Color(0.30f, 0.72f, 0.32f);
-                case BlockColor.Gold: return new Color(0.95f, 0.75f, 0.20f);
-                default: return new Color(0.85f, 0.70f, 0.50f);
-            }
-        }
-
         // UI theme
-        public static readonly Color Ink = new Color(0.16f, 0.10f, 0.07f);
-        public static readonly Color Cream = new Color(0.99f, 0.95f, 0.87f);
-        public static readonly Color Paper = new Color(0.96f, 0.90f, 0.80f);
-        public static readonly Color Walnut = new Color(0.29f, 0.18f, 0.11f);
-        public static readonly Color WalnutDark = new Color(0.17f, 0.10f, 0.06f);
-        public static readonly Color Accent = new Color(0.95f, 0.62f, 0.22f);
-        public static readonly Color AccentDark = new Color(0.78f, 0.42f, 0.12f);
-        public static readonly Color Good = new Color(0.36f, 0.75f, 0.40f);
-        public static readonly Color Bad = new Color(0.86f, 0.30f, 0.26f);
-        public static readonly Color Muted = new Color(0.55f, 0.47f, 0.40f);
+        public static readonly Color Ink = new Color(0.04f, 0.04f, 0.04f);
+        public static readonly Color Cream = new Color(0.86f, 0.83f, 0.76f);      // bone white text
+        public static readonly Color Paper = new Color(0.62f, 0.60f, 0.56f);      // secondary text
+        public static readonly Color Walnut = new Color(0.075f, 0.072f, 0.07f);   // panel
+        public static readonly Color WalnutDark = new Color(0.035f, 0.033f, 0.032f);
+        public static readonly Color Accent = new Color(0.74f, 0.20f, 0.16f);     // dried blood red
+        public static readonly Color AccentDark = new Color(0.40f, 0.10f, 0.08f);
+        public static readonly Color Lamp = new Color(0.95f, 0.78f, 0.48f);       // tungsten lamp
+        public static readonly Color Good = new Color(0.46f, 0.62f, 0.44f);
+        public static readonly Color Bad = new Color(0.78f, 0.24f, 0.20f);
+        public static readonly Color Muted = new Color(0.40f, 0.39f, 0.37f);
     }
 }

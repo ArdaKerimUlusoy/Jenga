@@ -10,8 +10,9 @@ using UnityEngine.UI;
 namespace SecretJenga.UI
 {
     /// <summary>
-    /// Builds and drives every screen at runtime (uGUI): splash, main menu, online menus, room browser, lobby,
-    /// HUD, pause, settings, credits, results, modal dialogs, loading overlay, toasts and banners.
+    /// Builds and drives every screen at runtime (uGUI): splash, main menu, host / join screens, room browser, lobby,
+    /// HUD (turns, objective, card, secret task), pause, settings, credits, round results, dialogs, loading overlay,
+    /// toasts and banners. The UI only displays replicated state and sends requests - no game rules live here.
     /// Screens follow the session state and the replicated game phase automatically.
     /// </summary>
     public partial class UIManager : MonoBehaviour
@@ -22,7 +23,7 @@ namespace SecretJenga.UI
         public static bool BlocksGameInput =>
             Instance != null && (Instance._pauseOpen || Instance._modalOpen || Instance._settingsOpen || Instance._loadingOpen || Instance._current == View.Results);
 
-        enum View { None, Splash, Main, Online, Create, Join, Browser, Lobby, Hud, Results, Credits }
+        enum View { None, Splash, Main, Host, Join, Browser, Lobby, Hud, Results, Credits }
 
         RectTransform _root;
         readonly Dictionary<View, CanvasGroup> _screens = new Dictionary<View, CanvasGroup>();
@@ -47,9 +48,8 @@ namespace SecretJenga.UI
             BuildCanvas();
             BuildSplash();
             BuildMainMenu();
-            BuildOnlineMenu();
-            BuildCreateRoom();
-            BuildJoinCode();
+            BuildHostScreen();
+            BuildJoinScreen();
             BuildBrowser();
             BuildCredits();
             BuildLobby();
@@ -68,8 +68,10 @@ namespace SecretJenga.UI
             NetworkGameManager.MatchEnded += OnMatchEnded;
             TurnManager.TurnStarted += OnTurnStarted;
             TurnManager.PrivateMessage += OnPrivateMessage;
-            SecretMissionManager.LocalMissionChanged += OnMissionChanged;
-            SecretMissionManager.ResultsRevealed += OnResultsRevealed;
+            SecretTaskManager.LocalTaskChanged += OnTaskChanged;
+            RoundResults.Revealed += OnResultsRevealed;
+            CardManager.LocalCardChanged += OnCardChanged;
+            CardManager.CardPlayed += OnCardPlayed;
         }
 
         void Start()
@@ -93,8 +95,10 @@ namespace SecretJenga.UI
             NetworkGameManager.MatchEnded -= OnMatchEnded;
             TurnManager.TurnStarted -= OnTurnStarted;
             TurnManager.PrivateMessage -= OnPrivateMessage;
-            SecretMissionManager.LocalMissionChanged -= OnMissionChanged;
-            SecretMissionManager.ResultsRevealed -= OnResultsRevealed;
+            SecretTaskManager.LocalTaskChanged -= OnTaskChanged;
+            RoundResults.Revealed -= OnResultsRevealed;
+            CardManager.LocalCardChanged -= OnCardChanged;
+            CardManager.CardPlayed -= OnCardPlayed;
             if (_game != null) _game.StateChanged -= OnGameStateChanged;
             var s = NetworkSessionManager.Instance;
             if (s != null)
@@ -115,7 +119,7 @@ namespace SecretJenga.UI
 
         void BuildCanvas()
         {
-            var go = new GameObject("SecretJenga UI", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+            var go = new GameObject("TheLastBlock UI", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
             go.layer = 5;
             go.transform.SetParent(transform, false);
             var canvas = go.GetComponent<Canvas>();
@@ -129,7 +133,7 @@ namespace SecretJenga.UI
             _root = (RectTransform)go.transform;
 
             // cinematic vignette over the 3D scene
-            var vig = UIFactory.Image(_root, "Vignette", A.vignette, new Color(0, 0, 0, 0.75f), false);
+            var vig = UIFactory.Image(_root, "Vignette", A.vignette, new Color(0, 0, 0, 0.85f), false);
             UIFactory.Stretch(vig.rectTransform);
             if (A.vignette == null) vig.enabled = false;
         }
@@ -148,7 +152,7 @@ namespace SecretJenga.UI
             var rt = UIFactory.Rect(name, _root);
             UIFactory.Stretch(rt);
             var g = rt.gameObject.AddComponent<CanvasGroup>();
-            var bg = UIFactory.Image(rt, "Dim", null, new Color(0.05f, 0.03f, 0.02f, dim));
+            var bg = UIFactory.Image(rt, "Dim", null, new Color(0.01f, 0.01f, 0.01f, dim));
             bg.raycastTarget = true;
             UIFactory.Stretch(bg.rectTransform);
             g.alpha = 0;
@@ -172,8 +176,10 @@ namespace SecretJenga.UI
                 g.transform.SetAsLastSibling();
                 g.interactable = true;
                 UITween.Fade(g, 1f, 0.25f);
-                var card = g.transform.childCount > 0 ? g.transform.GetChild(0) : null;
-                if (card != null && s != View.Hud) UITween.Scale(card, Vector3.one * 0.96f, Vector3.one, 0.3f);
+                // sheets are laid down on the table: a short slide, no bounce
+                if (s != View.Hud)
+                    foreach (Transform child in g.transform)
+                        if (child.name.StartsWith("Sheet")) UITween.SlideIn((RectTransform)child, new Vector2(0, -26), 0.32f);
                 OnScreenShown(s);
             }
             KeepOverlaysOnTop();
@@ -209,7 +215,7 @@ namespace SecretJenga.UI
                 g.interactable = true;
                 g.blocksRaycasts = true;
                 UITween.Fade(g, 1f, 0.18f);
-                if (g.transform.childCount > 1) UITween.Scale(g.transform.GetChild(1), Vector3.one * 0.94f, Vector3.one, 0.25f);
+                if (g.transform.childCount > 1) UITween.SlideIn((RectTransform)g.transform.GetChild(1), new Vector2(0, -22), 0.28f);
             }
             else
             {
@@ -222,10 +228,24 @@ namespace SecretJenga.UI
         // ------------------------------------------------------------------ Update / input
         void Update()
         {
-            if (_loadingOpen && _spinner != null) _spinner.Rotate(0, 0, -240f * Time.unscaledDeltaTime);
+            if (_loadingOpen && _spinner != null)
+            {
+                // the ink ring breathes instead of spinning like a web page
+                float k = Mathf.Sin(Time.unscaledTime * 2.2f);
+                _spinner.localRotation = Quaternion.Euler(0, 0, k * 3f);
+                _spinner.localScale = Vector3.one * (1f + k * 0.03f);
+            }
             var kb = Keyboard.current;
             if (kb != null && kb.escapeKey.wasPressedThisFrame) OnEscape();
-            if (_current == View.Hud) UpdateHud();
+            if (_current == View.Hud)
+            {
+                // W/A/S/D lean the head; don't let them also navigate between still-selected HUD buttons.
+                var es = EventSystem.current;
+                if (es != null && es.currentSelectedGameObject != null && !_pauseOpen && !_settingsOpen && !_modalOpen &&
+                    es.currentSelectedGameObject.GetComponent<InputField>() == null)
+                    es.SetSelectedGameObject(null);
+                UpdateHud();
+            }
             if (_current == View.Lobby) UpdateLobbyLive();
             UpdateToasts();
         }
@@ -238,10 +258,9 @@ namespace SecretJenga.UI
             switch (_current)
             {
                 case View.Hud: TogglePause(); break;
-                case View.Online: ShowScreen(View.Main); break;
-                case View.Create:
-                case View.Join:
-                case View.Browser: ShowScreen(View.Online); break;
+                case View.Host:
+                case View.Join: ShowScreen(View.Main); break;
+                case View.Browser: ShowScreen(View.Join); break;
                 case View.Credits: ShowScreen(View.Main); break;
                 case View.Splash: ShowScreen(View.Main); break;
             }
@@ -307,23 +326,21 @@ namespace SecretJenga.UI
         void OnMatchEnded(bool won)
         {
             AudioManager.Instance?.Play(won ? AudioManager.Sfx.Win : AudioManager.Sfx.Lose);
-            Flash(won ? new Color(1f, 0.85f, 0.4f, 0.35f) : new Color(0.8f, 0.1f, 0.05f, 0.45f));
+            Flash(won ? new Color(0.95f, 0.8f, 0.5f, 0.18f) : new Color(0.5f, 0.02f, 0.01f, 0.55f));
         }
 
         // ------------------------------------------------------------------ Modal
         void BuildModal()
         {
-            _modalGroup = NewOverlay("Modal", 0.65f);
-            var card = UIFactory.Card(_modalGroup.transform, "ModalCard");
-            UIFactory.Place((RectTransform)card.transform.parent, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(760, 420));
-            var col = UIFactory.Rect("Col", card.transform);
-            UIFactory.Stretch(col);
-            UIFactory.VLayout(col, 18, 40);
-            _modalTitle = UIFactory.Title(col, "Notice", 44);
-            _modalText = UIFactory.Text(col, "", 30, Palette.Paper);
+            _modalGroup = NewOverlay("Modal", 0.6f);
+            var sheet = UIFactory.PaperSheet(_modalGroup.transform, "SheetModal", new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(780, 440), 1.1f, 1, 60);
+            _modalTitle = UIFactory.Title(sheet.Body, "Notice", 46);
+            UIFactory.Divider(sheet.Body);
+            _modalText = UIFactory.Write(sheet.Body, FontKind.Type, "", 25, Ink.Black, TextAnchor.UpperLeft);
             UIFactory.LE(_modalText, 170);
-            var ok = UIFactory.Button(col, "OK", () => { var a = _modalOk; CloseModal(); a?.Invoke(); });
-            UIFactory.LE(ok, 80);
+            var row = UIFactory.ButtonRow(sheet.Body, 64, 40, TextAnchor.MiddleRight);
+            UIFactory.Button(row, "Understood", () => { var a = _modalOk; CloseModal(); a?.Invoke(); }, ButtonStyle.Primary, 34);
+            UIFactory.OnPaper = false;
         }
 
         public void ShowModal(string title, string message, System.Action onOk = null)
@@ -346,12 +363,13 @@ namespace SecretJenga.UI
         // ------------------------------------------------------------------ Loading
         void BuildLoading()
         {
-            _loadingGroup = NewOverlay("Loading", 0.7f);
-            var spin = UIFactory.Image(_loadingGroup.transform, "Spinner", A.iconRefresh != null ? A.iconRefresh : UIFactory.CircleSprite, Palette.Accent, false);
-            _spinner = spin.rectTransform;
-            UIFactory.Place(_spinner, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0, 50), new Vector2(110, 110));
-            _loadingText = UIFactory.Text(_loadingGroup.transform, "Loading...", 34, Palette.Cream);
-            UIFactory.Place(_loadingText.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0, -60), new Vector2(1000, 60));
+            _loadingGroup = NewOverlay("Loading", 0.72f);
+            UIFactory.OnPaper = false;
+            var ring = UIFactory.Image(_loadingGroup.transform, "InkRing", A.inkCircle != null ? A.inkCircle : UIFactory.CircleSprite, Ink.RedBright, false);
+            _spinner = ring.rectTransform;
+            UIFactory.Place(_spinner, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0, 10), new Vector2(560, 150));
+            _loadingText = UIFactory.Write(_loadingGroup.transform, FontKind.Type, "...", 30, Ink.Bone, TextAnchor.MiddleCenter);
+            UIFactory.Place(_loadingText.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0, 10), new Vector2(1100, 60));
         }
 
         public void ShowLoading(string text)
@@ -377,8 +395,8 @@ namespace SecretJenga.UI
         void BuildToasts()
         {
             _toastRoot = UIFactory.Rect("Toasts", _root);
-            UIFactory.Place(_toastRoot, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0, -150), new Vector2(900, 400));
-            var v = UIFactory.VLayout(_toastRoot, 10, 0, TextAnchor.UpperCenter, false);
+            UIFactory.Place(_toastRoot, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0, -200), new Vector2(1000, 420));
+            var v = UIFactory.VLayout(_toastRoot, 6, 0, TextAnchor.UpperCenter, false);
             v.childControlWidth = false;
             v.childControlHeight = false;
 
@@ -392,27 +410,35 @@ namespace SecretJenga.UI
             UIFactory.Stretch(_flashImage.rectTransform);
         }
 
+        /// <summary>A typed slip of paper that slides in, stays a moment and fades.</summary>
         public void Toast(string message, Color accent)
         {
-            if (string.IsNullOrEmpty(message)) return;
-            var pill = UIFactory.Image(_toastRoot, "Toast", UIFactory.PillSprite, new Color(0.12f, 0.07f, 0.04f, 0.92f));
-            var h = UIFactory.HLayout(pill, 14, 14, TextAnchor.MiddleCenter, false);
-            h.padding = new RectOffset(30, 30, 12, 12);
-            var dot = UIFactory.Image(pill.transform, "Dot", UIFactory.CircleSprite, accent, false);
-            UIFactory.LE(dot, 18, 18);
-            var t = UIFactory.Text(pill.transform, message, 28, Palette.Cream);
-            t.horizontalOverflow = HorizontalWrapMode.Wrap;
-            var fitter = pill.gameObject.AddComponent<ContentSizeFitter>();
-            fitter.horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
-            fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
-            UIFactory.LE(t, -1, Mathf.Min(760, 14 * message.Length + 40));
-            var g = pill.gameObject.AddComponent<CanvasGroup>();
+            if (string.IsNullOrEmpty(message) || _toastRoot == null) return;
+            bool prev = UIFactory.OnPaper;
+            UIFactory.OnPaper = true;
+            var holder = UIFactory.Rect("Toast", _toastRoot);
+            var slip = UIFactory.Image(holder, "Slip", UIFactory.SlipSprite, Color.white);
+            UIFactory.Stretch(slip.rectTransform);
+            var mark = UIFactory.Image(holder, "Mark", UIFactory.BlotSprite, Bright(accent), false);
+            UIFactory.Place(mark.rectTransform, new Vector2(0f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(36, 0), new Vector2(20, 20));
+            var t = UIFactory.Write(holder, FontKind.Type, message, 22, Ink.Black, TextAnchor.MiddleLeft);
+            float w = Mathf.Clamp(t.preferredWidth + 100f, 300f, 900f);
+            t.rectTransform.sizeDelta = new Vector2(w - 100f, 0);
+            float h = Mathf.Max(64f, t.cachedTextGeneratorForLayout.GetPreferredHeight(message, t.GetGenerationSettings(new Vector2(w - 100f, 0))) / t.pixelsPerUnit + 34f);
+            holder.sizeDelta = new Vector2(w, h);
+            UIFactory.Stretch(t.rectTransform, 62, 0, 38, 2);
+            holder.localRotation = Quaternion.Euler(0, 0, Random.Range(-1.4f, 1.4f));
+            UIFactory.OnPaper = prev;
+            var g = holder.gameObject.AddComponent<CanvasGroup>();
             g.blocksRaycasts = false;
             g.alpha = 0;
             UITween.Fade(g, 1f, 0.2f);
-            _toasts.Add(new ToastItem { Group = g, Life = 3.6f });
+            _toasts.Add(new ToastItem { Group = g, Life = 4.4f });
             while (_toasts.Count > 4) { Destroy(_toasts[0].Group.gameObject); _toasts.RemoveAt(0); }
         }
+
+        /// <summary>Accent colours are designed for the dark room; on paper the ink must be darker.</summary>
+        static Color Bright(Color c) => new Color(c.r * 0.8f, c.g * 0.8f, c.b * 0.8f, 1f);
 
         void UpdateToasts()
         {

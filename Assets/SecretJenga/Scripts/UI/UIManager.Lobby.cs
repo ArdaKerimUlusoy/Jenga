@@ -9,116 +9,133 @@ namespace SecretJenga.UI
     {
         class SlotRefs
         {
-            public GameObject Filled, Empty;
-            public Image AvatarFill;
-            public Text AvatarLetter, Name, Tags, Status;
-            public Image StatusBg, Background;
+            public GameObject Filled, Empty, Root;
+            public Image Mark;
+            public Text Numeral, MarkLetter, Name, Tags, Status;
+            public Image Strike;
         }
 
         readonly List<SlotRefs> _slots = new List<SlotRefs>();
         readonly List<Image> _swatches = new List<Image>();
-        Text _lobbyRoomName, _lobbyCode, _lobbyCount, _lobbyStatus, _lobbyRules;
-        UIFactory.StepperRef _lTarget, _lStart, _lTurn;
-        GameObject _hostSettings;
+        Text _lobbyRoomName, _lobbyCode, _lobbyCodeLabel, _lobbyCount, _lobbyStatus, _lobbyRules, _lobbyAddresses;
+        UIFactory.StepperRef _lRequired, _lStart, _lTurn;
         Button _readyButton, _startButton;
         bool _settingStepper;
+
+        static readonly string[] Numerals = { "I.", "II.", "III.", "IV.", "V.", "VI." };
 
         void BuildLobby()
         {
             var g = NewScreen(View.Lobby, "Lobby");
 
-            // ---------------- left: players
-            var left = CenterCard(g, "PlayersCard", new Vector2(780, 860), new Vector2(-410, 0));
+            // ---------------- left sheet: the seating list
+            var left = CenterCard(g, "Seating", new Vector2(780, 900), new Vector2(-420, 0));
+            UIFactory.Caption(left, "seating, tonight");
             var head = UIFactory.Rect("Head", left);
             UIFactory.LE(head, 70);
             UIFactory.HLayout(head, 10, 0, TextAnchor.MiddleLeft, false);
-            UIFactory.LE(UIFactory.Text(head, "Players", 46, Palette.Cream, TextAnchor.MiddleLeft, FontStyle.Bold), -1, -1, 1);
-            _lobbyCount = UIFactory.Text(head, "1 / 4", 34, Palette.Accent, TextAnchor.MiddleRight, FontStyle.Bold);
-            UIFactory.LE(_lobbyCount, -1, 160);
-
-            for (int i = 0; i < GameRules.MaxPlayers; i++) _slots.Add(BuildSlot(left));
-
+            UIFactory.LE(UIFactory.Write(head, FontKind.Title, "At the Table", 56, Ink.Black, TextAnchor.MiddleLeft), -1, -1, 1);
+            _lobbyCount = UIFactory.Write(head, FontKind.Type, "1 / 5", 30, Ink.Red, TextAnchor.MiddleRight);
+            UIFactory.LE(_lobbyCount, -1, 120);
             UIFactory.Divider(left);
-            var cl = UIFactory.Text(left, "Your color", 26, Palette.Paper, TextAnchor.MiddleLeft);
-            UIFactory.LE(cl, 34);
+
+            for (int i = 0; i < GameRules.MaxPlayers; i++) _slots.Add(BuildSlot(left, i));
+
+            UIFactory.LE(UIFactory.Rect("Push", left), -1, -1, -1, 1);
+            UIFactory.Caption(left, "your ink");
             var sw = UIFactory.Rect("Swatches", left);
             UIFactory.LE(sw, 70);
-            UIFactory.HLayout(sw, 12, 0, TextAnchor.MiddleCenter, false);
+            UIFactory.HLayout(sw, 22, 0, TextAnchor.MiddleLeft, false);
             for (int i = 0; i < Palette.PlayerColors.Length; i++)
             {
                 int idx = i;
-                var b = UIFactory.IconButton(sw, UIFactory.CircleSprite, () => PickColor(idx), Palette.Cream, Palette.PlayerColors[i], 62);
-                _swatches.Add(b.transform.GetChild(0).GetComponent<Image>());
+                var b = UIFactory.IconButton(sw, UIFactory.BlotSprite, () => PickColor(idx), Color.clear, InkOf(Palette.PlayerColors[i]), 66);
+                var ic = b.transform.GetChild(0).GetComponent<Image>();
+                ic.transform.localRotation = Quaternion.Euler(0, 0, i * 47f);
+                Object.Destroy(b.GetComponent<InkButtonFX>()); // the blot keeps its own colour
+                _swatches.Add(ic);
             }
 
-            // ---------------- right: room
-            var right = CenterCard(g, "RoomCard", new Vector2(780, 860), new Vector2(410, 0));
-            _lobbyRoomName = UIFactory.Text(right, "Room", 42, Palette.Cream, TextAnchor.MiddleCenter, FontStyle.Bold);
-            UIFactory.LE(_lobbyRoomName, 60);
+            // ---------------- right sheet: the room
+            var right = CenterCard(g, "Room", new Vector2(780, 900), new Vector2(420, 0));
+            UIFactory.Caption(right, "the room");
+            _lobbyRoomName = UIFactory.Write(right, FontKind.Title, "Table", 48, Ink.Black, TextAnchor.MiddleLeft);
+            _lobbyRoomName.horizontalOverflow = HorizontalWrapMode.Overflow;
+            UIFactory.LE(_lobbyRoomName, 62);
 
-            var codeBox = UIFactory.Image(right, "CodeBox", UIFactory.RoundedSprite, new Color(0, 0, 0, 0.3f));
-            UIFactory.LE(codeBox, 120);
-            var ch = UIFactory.HLayout(codeBox, 16, 0, TextAnchor.MiddleCenter, false);
-            ch.padding = new RectOffset(30, 20, 10, 10);
-            var codeCol = UIFactory.Rect("CodeCol", codeBox.transform);
+            var codeRow = UIFactory.Rect("CodeRow", right);
+            UIFactory.LE(codeRow, 104);
+            UIFactory.HLayout(codeRow, 16, 0, TextAnchor.MiddleLeft, false);
+            var codeCol = UIFactory.Rect("CodeCol", codeRow);
             UIFactory.LE(codeCol, -1, -1, 1);
             UIFactory.VLayout(codeCol, 0, 0, TextAnchor.MiddleLeft);
-            UIFactory.LE(UIFactory.Text(codeCol, "ROOM CODE", 22, Palette.Muted, TextAnchor.MiddleLeft, FontStyle.Bold), 28);
-            _lobbyCode = UIFactory.Text(codeCol, "------", 56, Palette.Accent, TextAnchor.MiddleLeft, FontStyle.Bold);
-            UIFactory.LE(_lobbyCode, 66);
-            UIFactory.IconButton(codeBox.transform, A.iconCopy, CopyCode, Palette.Accent, Palette.WalnutDark, 78);
+            _lobbyCodeLabel = UIFactory.Caption(codeCol, "room code");
+            _lobbyCode = UIFactory.Write(codeCol, FontKind.Type, "------", 48, Ink.Red, TextAnchor.MiddleLeft);
+            _lobbyCode.horizontalOverflow = HorizontalWrapMode.Overflow;
+            UIFactory.LE(_lobbyCode, 62);
+            UIFactory.Button(codeRow, "copy", CopyCode, ButtonStyle.Secondary, 28);
+            _lobbyAddresses = UIFactory.Write(right, FontKind.Body, "", 20, Ink.Faded, TextAnchor.UpperLeft, FontStyle.Italic);
+            UIFactory.LE(_lobbyAddresses, 52);
+            UIFactory.Divider(right);
 
             var hs = UIFactory.Rect("HostSettings", right);
-            UIFactory.VLayout(hs, 8, 0);
-            UIFactory.LE(hs, 220);
-            _hostSettings = hs.gameObject;
-            _lStart = UIFactory.Stepper(hs, "Starting layers", GameRules.MinStartLayers, GameRules.MaxStartLayers, GameRules.DefaultStartLayers, 1, v => v.ToString(), _ => PushSettings());
-            _lTarget = UIFactory.Stepper(hs, "Target height", GameRules.MinTargetHeight, GameRules.MaxTargetHeight, GameRules.DefaultTargetHeight, 1, v => v.ToString(), _ => PushSettings());
-            _lTurn = UIFactory.Stepper(hs, "Turn time", 10, 90, GameRules.DefaultTurnSeconds, 5, v => v + " s", _ => PushSettings());
+            UIFactory.VLayout(hs, 2, 0);
+            UIFactory.LE(hs, 156);
+            _lRequired = UIFactory.Stepper(hs, "Turns the tower must survive", GameRules.MinRequiredTurns, GameRules.MaxRequiredTurns, GameRules.DefaultRequiredTurns, 1, v => v.ToString(), _ => PushSettings());
+            _lStart = UIFactory.Stepper(hs, "Floors at the start", GameRules.MinStartLayers, GameRules.MaxStartLayers, GameRules.DefaultStartLayers, 1, v => v.ToString(), _ => PushSettings());
+            _lTurn = UIFactory.Stepper(hs, "Time for each turn", 0, GameRules.MaxTurnSeconds, GameRules.DefaultTurnSeconds, 20, FormatTimer, _ => PushSettings());
+            UIFactory.Divider(right);
 
-            _lobbyRules = UIFactory.Text(right, "", 26, Palette.Paper);
+            _lobbyRules = UIFactory.Write(right, FontKind.Body, "", 23, Ink.Black, TextAnchor.UpperLeft);
             UIFactory.LE(_lobbyRules, 150);
 
-            _lobbyStatus = UIFactory.Text(right, "", 26, Palette.Accent, TextAnchor.MiddleCenter, FontStyle.Italic);
-            UIFactory.LE(_lobbyStatus, 40);
+            UIFactory.LE(UIFactory.Rect("Push", right), -1, -1, -1, 1);
+            _lobbyStatus = UIFactory.Write(right, FontKind.Type, "", 21, Ink.Red, TextAnchor.MiddleLeft);
+            UIFactory.LE(_lobbyStatus, 34);
 
-            var row = UIFactory.Rect("Buttons", right);
-            UIFactory.LE(row, 90);
-            UIFactory.HLayout(row, 18, 0);
-            UIFactory.Button(row, "Leave", LeaveRoom, ButtonStyle.Ghost, 30);
-            _readyButton = UIFactory.Button(row, "Ready", ToggleReady, ButtonStyle.Good, 34, A.iconCheck);
-            _startButton = UIFactory.Button(row, "Start Game", StartGame, ButtonStyle.Primary, 34, A.iconStar);
+            var row = UIFactory.ButtonRow(right, 72, 40);
+            UIFactory.Button(row, "leave", LeaveRoom, ButtonStyle.Ghost, 30);
+            UIFactory.LE(UIFactory.Rect("Push", row), -1, -1, 1);
+            _readyButton = UIFactory.Button(row, "I am ready", ToggleReady, ButtonStyle.Primary, 40);
+            _startButton = UIFactory.Button(row, "Begin", StartGame, ButtonStyle.Primary, 44);
+            UIFactory.OnPaper = false;
         }
 
-        SlotRefs BuildSlot(Transform parent)
+        /// <summary>Player colours are tuned for the dark room; written on paper they need to be inkier.</summary>
+        static Color InkOf(Color c) => new Color(c.r * 0.72f, c.g * 0.72f, c.b * 0.72f, 1f);
+
+        SlotRefs BuildSlot(Transform parent, int index)
         {
             var s = new SlotRefs();
-            s.Background = UIFactory.Image(parent, "Slot", UIFactory.RoundedSprite, new Color(1, 1, 1, 0.06f));
-            UIFactory.LE(s.Background, 112);
+            var root = UIFactory.Rect("Seat" + index, parent);
+            UIFactory.LE(root, 84);
+            s.Root = root.gameObject;
 
-            var filled = UIFactory.Rect("Filled", s.Background.transform);
-            UIFactory.Stretch(filled);
-            var h = UIFactory.HLayout(filled, 20, 0, TextAnchor.MiddleLeft, false);
-            h.padding = new RectOffset(18, 18, 12, 12);
+            s.Numeral = UIFactory.Write(root, FontKind.Title, Numerals[index], 30, Ink.Faded, TextAnchor.MiddleLeft);
+            UIFactory.Place(s.Numeral.rectTransform, new Vector2(0, 0.5f), new Vector2(0, 0.5f), new Vector2(0, 0), new Vector2(64, 60));
+
+            var filled = UIFactory.Rect("Filled", root);
+            UIFactory.Stretch(filled, 70, 0, 0, 0);
+            var h = UIFactory.HLayout(filled, 18, 0, TextAnchor.MiddleLeft, false);
             h.childForceExpandHeight = false;
-            var avatar = UIFactory.Avatar(filled, "?", Color.gray, 84);
-            s.AvatarFill = avatar.transform.GetChild(0).GetComponent<Image>();
-            s.AvatarLetter = s.AvatarFill.GetComponentInChildren<Text>();
+            s.Mark = UIFactory.Avatar(filled, "?", Color.gray, 58);
+            s.MarkLetter = s.Mark.GetComponentInChildren<Text>();
             var nameCol = UIFactory.Rect("NameCol", filled);
-            UIFactory.LE(nameCol, 84, -1, 1);
-            UIFactory.VLayout(nameCol, 2, 0, TextAnchor.MiddleLeft);
-            s.Name = UIFactory.Text(nameCol, "", 34, Palette.Cream, TextAnchor.MiddleLeft, FontStyle.Bold);
-            UIFactory.LE(s.Name, 44);
-            s.Tags = UIFactory.Text(nameCol, "", 22, Palette.Accent, TextAnchor.MiddleLeft, FontStyle.Bold);
-            UIFactory.LE(s.Tags, 28);
-            s.StatusBg = UIFactory.Image(filled, "Status", UIFactory.PillSprite, Palette.Good);
-            UIFactory.LE(s.StatusBg, 50, 190);
-            s.Status = UIFactory.Text(s.StatusBg.transform, "READY", 24, Color.white, TextAnchor.MiddleCenter, FontStyle.Bold);
-            UIFactory.Stretch(s.Status.rectTransform);
+            UIFactory.LE(nameCol, 76, -1, 1);
+            UIFactory.VLayout(nameCol, 0, 0, TextAnchor.MiddleLeft);
+            s.Name = UIFactory.Write(nameCol, FontKind.Body, "", 34, Ink.Black, TextAnchor.MiddleLeft);
+            UIFactory.LE(s.Name, 42);
+            s.Tags = UIFactory.Write(nameCol, FontKind.Type, "", 18, Ink.Faded, TextAnchor.MiddleLeft);
+            UIFactory.LE(s.Tags, 24);
+            s.Status = UIFactory.Write(filled, FontKind.Type, "", 22, Ink.Black, TextAnchor.MiddleRight);
+            UIFactory.LE(s.Status, 40, 150);
+            s.Strike = UIFactory.Image(filled, "Strike", UIFactory.StrokeSprite, Ink.Red, false);
+            s.Strike.gameObject.AddComponent<LayoutElement>().ignoreLayout = true;
+            UIFactory.Place(s.Strike.rectTransform, new Vector2(0, 0.5f), new Vector2(0, 0.5f), new Vector2(70, 2), new Vector2(330, 10));
             s.Filled = filled.gameObject;
 
-            var empty = UIFactory.Text(s.Background.transform, "Waiting for a player...", 28, new Color(1, 1, 1, 0.3f), TextAnchor.MiddleCenter, FontStyle.Italic);
-            UIFactory.Stretch(empty.rectTransform);
+            var empty = UIFactory.Write(root, FontKind.Body, "an empty chair", 26, Ink.Pencil, TextAnchor.MiddleLeft, FontStyle.Italic);
+            UIFactory.Stretch(empty.rectTransform, 76, 0, 0, 0);
             s.Empty = empty.gameObject;
             return s;
         }
@@ -133,33 +150,43 @@ namespace SecretJenga.UI
             _lobbyCount.text = $"{game.ConnectedCount} / {max}";
             _lobbyRoomName.text = game.RoomName.Value.ToString();
             var code = game.RoomCode.Value.ToString();
+            bool direct = game.IsDirectSession.Value;
+            _lobbyCodeLabel.text = direct ? "address of this table - give it to the others" : "room code";
             _lobbyCode.text = string.IsNullOrEmpty(code) ? "......" : code;
+            if (direct && game.IsServer)
+            {
+                var all = NetworkSessionManager.LocalAddresses();
+                _lobbyAddresses.text = (all.Count > 1 ? "also: " + string.Join("   ", all.GetRange(1, all.Count - 1)) + "\n" : "") +
+                                       "same PC: 127.0.0.1  -  over the internet, forward UDP " + GameSettings.DirectPort + " to this PC.";
+            }
+            else _lobbyAddresses.text = direct ? "You sat down at the host's table directly." : "Friends sit down with this code: Join a table > Online.";
 
             ulong me = game.NetworkManager.LocalClientId;
             var used = new HashSet<int>();
             for (int i = 0; i < _slots.Count; i++)
             {
                 var s = _slots[i];
-                s.Background.gameObject.SetActive(i < max);
+                s.Root.SetActive(i < max);
                 bool has = i < players.Count;
                 s.Filled.SetActive(has);
                 s.Empty.SetActive(!has);
+                s.Numeral.color = has ? Ink.Black : Ink.Pencil;
                 if (!has) continue;
                 var p = players[i];
                 used.Add(p.ColorIndex);
-                s.AvatarFill.color = p.Color;
+                s.Mark.color = InkOf(p.Color);
                 var n = p.Name.ToString();
-                s.AvatarLetter.text = n.Length > 0 ? n.Substring(0, 1).ToUpperInvariant() : "?";
+                s.MarkLetter.text = n.Length > 0 ? n.Substring(0, 1).ToUpperInvariant() : "?";
                 s.Name.text = n;
-                var tags = new List<string>();
-                if (p.IsHost) tags.Add("HOST");
-                if (p.ClientId == me) tags.Add("YOU");
-                s.Tags.text = string.Join("  -  ", tags);
-                s.Background.color = p.ClientId == me ? new Color(Palette.Accent.r, Palette.Accent.g, Palette.Accent.b, 0.14f) : new Color(1, 1, 1, 0.06f);
-                if (!p.IsConnected) { s.Status.text = "OFFLINE"; s.StatusBg.color = Palette.Muted; }
-                else if (p.IsHost) { s.Status.text = "HOST"; s.StatusBg.color = Palette.AccentDark; }
-                else if (p.IsReady) { s.Status.text = "READY"; s.StatusBg.color = Palette.Good; }
-                else { s.Status.text = "NOT READY"; s.StatusBg.color = Palette.Bad; }
+                var tags = new List<string> { "chair " + (p.SeatIndex + 1) };
+                if (p.IsHost) tags.Add("host");
+                if (p.ClientId == me) tags.Add("you");
+                s.Tags.text = string.Join("  /  ", tags);
+                s.Strike.gameObject.SetActive(!p.IsConnected);
+                if (!p.IsConnected) { s.Status.text = "left"; s.Status.color = Ink.Faded; }
+                else if (p.IsHost) { s.Status.text = "host"; s.Status.color = Ink.Faded; }
+                else if (p.IsReady) { s.Status.text = "ready"; s.Status.color = Ink.Green; }
+                else { s.Status.text = "not yet"; s.Status.color = Ink.Red; }
             }
 
             var mine = game.LocalPlayer;
@@ -167,26 +194,24 @@ namespace SecretJenga.UI
             {
                 bool takenByOther = used.Contains(i) && (!mine.HasValue || mine.Value.ColorIndex != i);
                 bool isMine = mine.HasValue && mine.Value.ColorIndex == i;
-                var c = Palette.PlayerColors[i];
-                _swatches[i].color = takenByOther ? new Color(c.r, c.g, c.b, 0.25f) : c;
-                var ring = _swatches[i].transform.parent.GetComponent<Image>();
-                ring.color = isMine ? Color.white : new Color(1, 1, 1, 0.25f);
-                ring.transform.localScale = isMine ? Vector3.one * 1.12f : Vector3.one;
+                var c = InkOf(Palette.PlayerColors[i]);
+                _swatches[i].color = takenByOther ? new Color(c.r, c.g, c.b, 0.18f) : c;
+                _swatches[i].transform.parent.localScale = isMine ? Vector3.one * 1.25f : Vector3.one * 0.85f;
             }
 
             bool host = game.IsServer;
             _settingStepper = true;
+            _lRequired.Set(game.RequiredTurns.Value, false);
             _lStart.Set(game.StartLayers.Value, false);
-            _lTarget.Set(game.TargetHeight.Value, false);
             _lTurn.Set(game.TurnSeconds.Value, false);
+            _lRequired.Interactable = host;
             _lStart.Interactable = host;
-            _lTarget.Interactable = host;
             _lTurn.Interactable = host;
             _settingStepper = false;
 
-            int moves = (game.TargetHeight.Value - game.StartLayers.Value) * 3;
-            _lobbyRules.text = $"Build the tower from {game.StartLayers.Value} to <b>{game.TargetHeight.Value}</b> layers (~{moves} moves) without letting it fall.\n" +
-                               $"Each player gets a <color=#F2A13A>secret mission</color>. {game.TurnSeconds.Value}s per turn.";
+            string timer = game.TurnSeconds.Value > 0 ? $"You have {game.TurnSeconds.Value} seconds a turn." : "Nobody is timed.";
+            _lobbyRules.text = $"Together, keep the tower standing for <color=#99261A>{game.RequiredTurns.Value}</color> turns. " +
+                               $"Each turn, pull one block and lay it on top. Each of you is dealt a <i>secret task</i> and one <i>card</i>. {timer}";
 
             _startButton.gameObject.SetActive(host);
             _readyButton.gameObject.SetActive(!host);
@@ -194,14 +219,13 @@ namespace SecretJenga.UI
             {
                 bool ok = game.CanStart(out var reason);
                 _startButton.interactable = ok;
-                _lobbyStatus.text = ok ? (game.ConnectedCount < 2 ? "Solo test mode is ON." : "Everyone is ready!") : reason;
+                _lobbyStatus.text = ok ? (game.ConnectedCount < 2 ? "solo test - you will play alone." : "everyone is ready.") : reason;
             }
             else
             {
                 bool ready = mine.HasValue && mine.Value.IsReady;
-                UIFactory.SetLabel(_readyButton, ready ? "Not Ready" : "Ready");
-                _readyButton.image.color = ready ? Palette.Muted : Color.white;
-                _lobbyStatus.text = ready ? "Waiting for the host to start..." : "Press Ready when you are set.";
+                UIFactory.SetLabel(_readyButton, ready ? "wait, not yet" : "I am ready");
+                _lobbyStatus.text = ready ? "waiting for the host to begin..." : "say when you are ready.";
             }
         }
 
@@ -210,9 +234,7 @@ namespace SecretJenga.UI
         void PushSettings()
         {
             if (_settingStepper || _game == null || !_game.IsServer) return;
-            // keep the target above the starting height
-            if (_lTarget.Value < _lStart.Value + 2) { _settingStepper = true; _lTarget.Set(_lStart.Value + 2, false); _settingStepper = false; }
-            _game.UpdateSettingsServerRpc(_lTarget.Value, _lStart.Value, _lTurn.Value);
+            _game.UpdateSettingsServerRpc(_lRequired.Value, _lStart.Value, _lTurn.Value);
         }
 
         void PickColor(int idx)
@@ -239,8 +261,8 @@ namespace SecretJenga.UI
         {
             if (_game == null) return;
             GUIUtility.systemCopyBuffer = _game.RoomCode.Value.ToString();
-            Toast("Room code copied to clipboard!", Palette.Good);
-            UITween.Pop(_lobbyCode.transform, 1.2f);
+            Toast(_game.IsDirectSession.Value ? "Address copied." : "Code copied.", Palette.Good);
+            UITween.Pop(_lobbyCode.transform, 1.15f);
         }
     }
 }

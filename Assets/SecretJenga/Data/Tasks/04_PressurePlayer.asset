@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8679774f8b035884eaff485c55bdcb3b, type: 3}
+  m_Name: 04_PressurePlayer
+  m_EditorClassIdentifier: Assembly-CSharp::SecretJenga.Game.TaskDefinition
+  id: pressure_player
+  title: Pressure Player
+  description: Play an intervention card on another player's turn. (You are guaranteed
+    one.)
+  kind: 4
+  inPool: 1
+  target: 1
+  scaleTargetToTurns: 0
+  maxRiskyRow: 3
+  wobbleThreshold: 0.3
+  displacementTolerance: 0.2
+  milestoneFraction: 0.66

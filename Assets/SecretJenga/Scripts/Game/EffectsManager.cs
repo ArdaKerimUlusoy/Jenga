@@ -2,30 +2,22 @@ using UnityEngine;
 
 namespace SecretJenga.Game
 {
-    /// <summary>Local visual effects: dust puffs on placement, big dust burst + camera shake on collapse, confetti on win.</summary>
+    /// <summary>Local visual effects: dust puffs on placement, a heavy dust burst and a short, restrained camera jolt on collapse.</summary>
     public class EffectsManager : MonoBehaviour
     {
         public static EffectsManager Instance { get; private set; }
 
-        ParticleSystem _dust, _confetti;
+        ParticleSystem _dust;
 
         void Awake()
         {
             Instance = this;
             _dust = MakeSystem("FX_Dust", false);
-            _confetti = MakeSystem("FX_Confetti", true);
-            NetworkGameManager.MatchEnded += OnMatchEnded;
         }
 
         void OnDestroy()
         {
-            NetworkGameManager.MatchEnded -= OnMatchEnded;
             if (Instance == this) Instance = null;
-        }
-
-        void OnMatchEnded(bool won)
-        {
-            if (won) Confetti();
         }
 
         ParticleSystem MakeSystem(string name, bool confetti)
@@ -49,7 +41,7 @@ namespace SecretJenga.Game
                 main.startRotation = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
                 var colors = new Gradient();
                 colors.SetKeys(
-                    new[] { new GradientColorKey(Palette.PlayerColors[0], 0f), new GradientColorKey(Palette.PlayerColors[1], 0.33f), new GradientColorKey(Palette.PlayerColors[3], 0.66f), new GradientColorKey(Palette.PlayerColors[2], 1f) },
+                    new[] { new GradientColorKey(Palette.PlayerColors[0], 0f), new GradientColorKey(Palette.PlayerColors[1], 1f) },
                     new[] { new GradientAlphaKey(1f, 0f), new GradientAlphaKey(1f, 1f) });
                 main.startColor = new ParticleSystem.MinMaxGradient(colors) { mode = ParticleSystemGradientMode.RandomColor };
             }
@@ -58,7 +50,7 @@ namespace SecretJenga.Game
                 main.startLifetime = new ParticleSystem.MinMaxCurve(0.8f, 1.6f);
                 main.startSpeed = new ParticleSystem.MinMaxCurve(0.2f, 1.2f);
                 main.startSize = new ParticleSystem.MinMaxCurve(0.25f, 0.7f);
-                main.startColor = new Color(0.86f, 0.78f, 0.64f, 0.45f);
+                main.startColor = new Color(0.62f, 0.60f, 0.56f, 0.4f);
                 main.gravityModifier = -0.02f;
             }
 
@@ -125,17 +117,7 @@ namespace SecretJenga.Game
                 _dust.transform.position = at;
                 _dust.Emit(40);
             }
-            CameraController.Instance?.Shake(0.25f, 0.8f);
-        }
-
-        public void Confetti()
-        {
-            if (_confetti == null) return;
-            float top = JengaDims.TableTopY + 4f;
-            var game = NetworkGameManager.Instance;
-            if (game != null && game.Tower != null) top = JengaDims.TableTopY + game.Tower.LayerCount.Value * JengaDims.BlockHeight;
-            _confetti.transform.position = new Vector3(0, top + 0.3f, 0);
-            _confetti.Emit(260);
+            CameraController.Instance?.Shake(0.12f, 0.6f);
         }
     }
 }

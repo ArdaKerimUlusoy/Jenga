@@ -6,7 +6,8 @@ namespace SecretJenga.Game
 {
     /// <summary>
     /// Server-side tower bookkeeping: builds the tower (3 blocks per layer, alternating 90°), tracks logical layers,
-    /// enforces the "no blocks from the top layers" rule, computes placement slots on top and checks the target height.
+    /// enforces the "no blocks from the top layers" rule and computes the placement slots on top (correct
+    /// orientation and position are enforced by only allowing the free slots of the top row).
     /// Clients get the replicated summary (layer count, top fill, lowest forbidden layer) for HUD and hover feedback.
     /// </summary>
     public class JengaTower : NetworkBehaviour
@@ -54,20 +55,9 @@ namespace SecretJenga.Game
             var assets = SecretJengaAssets.Instance;
             if (assets.blockPrefab == null)
             {
-                Debug.LogError("[SecretJenga] Block prefab missing. Run Tools > Secret Jenga > Generate Project.");
+                Debug.LogError("[TheLastBlock] Block prefab missing. Run Tools > The Last Block > Generate Project.");
                 return;
             }
-
-            // Colored blocks only in layers that can be extracted at the start (all but the top two).
-            var colorPlan = new Dictionary<int, BlockColor>();
-            var candidates = new List<int>();
-            for (int l = 0; l < startLayers - 2; l++)
-                for (int s = 0; s < 3; s++) candidates.Add(l * 3 + s);
-            Shuffle(candidates);
-            int perColor = Mathf.Clamp(candidates.Count / 8, 2, 3);
-            int ci = 0;
-            foreach (BlockColor c in new[] { BlockColor.Red, BlockColor.Blue, BlockColor.Green, BlockColor.Gold })
-                for (int k = 0; k < perColor && ci < candidates.Count; k++) colorPlan[candidates[ci++]] = c;
 
             for (int l = 0; l < startLayers; l++)
             {
@@ -76,19 +66,18 @@ namespace SecretJenga.Game
                 var row = new Vector3(BaseCenter.x, JengaDims.LayerCenterY(l), BaseCenter.z);
                 for (int s = 0; s < 3; s++)
                 {
-                    var color = colorPlan.TryGetValue(l * 3 + s, out var c) ? c : BlockColor.Natural;
-                    var block = Spawn(assets.blockPrefab, SlotPosition(row, rotY, s), Quaternion.Euler(0, rotY, 0), color, (byte)Random.Range(0, 3), l, s);
+                    var block = Spawn(assets.blockPrefab, SlotPosition(row, rotY, s), Quaternion.Euler(0, rotY, 0), (byte)Random.Range(0, 3), l, s);
                     if (block != null) _layers[l].Add(block);
                 }
             }
             RefreshSummary();
         }
 
-        JengaBlock Spawn(GameObject prefab, Vector3 pos, Quaternion rot, BlockColor color, byte wood, int layer, int slot)
+        JengaBlock Spawn(GameObject prefab, Vector3 pos, Quaternion rot, byte wood, int layer, int slot)
         {
             var go = Instantiate(prefab, pos, rot);
             var block = go.GetComponent<JengaBlock>();
-            block.ServerInit(color, wood, layer, slot);
+            block.ServerInit(wood, layer, slot);
             go.GetComponent<NetworkObject>().Spawn(true);
             block.Rb.linearVelocity = Vector3.zero;
             block.Rb.angularVelocity = Vector3.zero;
@@ -157,16 +146,30 @@ namespace SecretJenga.Game
             RefreshSummary();
         }
 
-        public bool IsTargetReached(int target) =>
-            _layers.Count >= target && _layers[_layers.Count - 1].Count >= 3;
+        /// <summary>Total number of logical layers currently in the tower (complete or not).</summary>
+        public int Height => _layers.Count;
 
-        public int CountExtractableColor(BlockColor c)
+        // ------------------------------------------------------------------ Position snapshots (Careful Builder task)
+        public Dictionary<JengaBlock, Vector3> SnapshotPositions(JengaBlock exclude)
         {
-            int n = 0;
-            int forbidden = ForbiddenFromLayer.Value;
-            for (int l = 0; l < _layers.Count && l < forbidden; l++)
-                foreach (var b in _layers[l]) if (b.Color.Value == c) n++;
-            return n;
+            var d = new Dictionary<JengaBlock, Vector3>();
+            foreach (var l in _layers)
+                foreach (var b in l)
+                    if (b != null && b != exclude) d[b] = b.transform.position;
+            return d;
+        }
+
+        /// <summary>Largest distance any snapshotted block moved since the snapshot.</summary>
+        public static float MaxDisplacement(Dictionary<JengaBlock, Vector3> snapshot, JengaBlock exclude)
+        {
+            if (snapshot == null) return 0f;
+            float max = 0f;
+            foreach (var kv in snapshot)
+            {
+                if (kv.Key == null || kv.Key == exclude) continue;
+                max = Mathf.Max(max, Vector3.Distance(kv.Key.transform.position, kv.Value));
+            }
+            return max;
         }
 
         /// <summary>Horizontal center of the tower around a given layer (average of neighbouring layers).</summary>

@@ -12,8 +12,11 @@ GameObject:
   - component: {fileID: 692399778333947236}
   - component: {fileID: 388219211603043761}
   - component: {fileID: 4356908938697840423}
-  - component: {fileID: 1543051276275597956}
+  - component: {fileID: 7023555962681927765}
+  - component: {fileID: 6202946333288930592}
   - component: {fileID: 5921804795544942939}
+  - component: {fileID: 1751470044919417506}
+  - component: {fileID: 5156989545204756733}
   - component: {fileID: 7359405673123522773}
   m_Layer: 0
   m_Name: SJ_Session
@@ -49,7 +52,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Unity.Netcode.Runtime::Unity.Netcode.NetworkObject
-  GlobalObjectIdHash: 4037100024
+  GlobalObjectIdHash: 2350104679
   InScenePlacedSourceGlobalObjectIdHash: 0
   m_InScenePlacedDisabledByDefault: 0
   DeferredDespawnTick: 0
@@ -94,7 +97,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SecretJenga.Game.JengaTower
   ShowTopMostFoldoutHeaderGroup: 1
---- !u!114 &1543051276275597956
+--- !u!114 &7023555962681927765
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -103,9 +106,22 @@ MonoBehaviour:
   m_GameObject: {fileID: 7731879049943556611}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: e7348e3e53e82eb4c8709fdfa5d6d887, type: 3}
+  m_Script: {fileID: 11500000, guid: 62a0fd1c2ce41e54ba2b6ff6d9a791c9, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::SecretJenga.Game.SecretMissionManager
+  m_EditorClassIdentifier: Assembly-CSharp::SecretJenga.Game.SecretTaskManager
+  ShowTopMostFoldoutHeaderGroup: 1
+--- !u!114 &6202946333288930592
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7731879049943556611}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7719d86814ff69141ac20229025ba531, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SecretJenga.Game.CardManager
   ShowTopMostFoldoutHeaderGroup: 1
 --- !u!114 &5921804795544942939
 MonoBehaviour:
@@ -119,6 +135,35 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c51d6e5c30cf839499c7f8e819dfb8b4, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SecretJenga.Game.TowerStabilityChecker
+  ShowTopMostFoldoutHeaderGroup: 1
+--- !u!114 &1751470044919417506
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7731879049943556611}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a457ae4f405060448b50a3b5133e53ae, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SecretJenga.Game.AtmosphereSync
+  ShowTopMostFoldoutHeaderGroup: 1
+  flickerPerMinute: {x: 0.6, y: 7}
+  metalPerMinute: {x: 0.4, y: 2.2}
+  minGap: 6
+--- !u!114 &5156989545204756733
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7731879049943556611}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 54860982813311449b9e19e2b4c45fc4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SecretJenga.Game.HandSync
   ShowTopMostFoldoutHeaderGroup: 1
 --- !u!114 &7359405673123522773
 MonoBehaviour:

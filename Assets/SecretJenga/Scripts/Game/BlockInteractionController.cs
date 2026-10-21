@@ -7,8 +7,11 @@ namespace SecretJenga.Game
 {
     /// <summary>
     /// Local mouse interaction (Input System). Picks/hover-highlights blocks, sends grab / drag / release / place
-    /// requests to the host and renders the placement ghosts and the other players' cursor marker.
-    /// It never moves blocks itself: the host simulates, everyone sees the replicated result.
+    /// requests to the host and renders the placement ghosts and the active player's grip marker.
+    /// It never moves blocks itself: the host simulates the physics (force-driven pull, see TurnManager), and
+    /// everyone sees the replicated result.
+    ///   LMB press on a block   grab it          LMB held + move   pull / push it along its length
+    ///   LMB release            let go           once it is out    move over the tower, click a free slot to place
     /// </summary>
     public class BlockInteractionController : MonoBehaviour
     {
@@ -18,6 +21,17 @@ namespace SecretJenga.Game
         public float sendRate = 30f;
 
         public string Hint { get; private set; } = "";
+
+        public enum Prompt { None, Grab, Forbidden, Committed }
+        /// <summary>Small prompt next to the cursor (HUD reads this).</summary>
+        public Prompt CursorPrompt { get; private set; }
+        /// <summary>Point on the block under the cursor (local player's hand reaches towards it).</summary>
+        public bool HasHoverPoint { get; private set; }
+        public Vector3 HoverPoint { get; private set; }
+        public Vector3 HoverNormal { get; private set; } = Vector3.up;
+        /// <summary>Where the mouse ray meets the table plane - the resting hand slides here.</summary>
+        public bool HasTablePoint { get; private set; }
+        public Vector3 TablePoint { get; private set; }
 
         JengaBlock _hovered;
         Plane _dragPlane;
@@ -29,6 +43,7 @@ namespace SecretJenga.Game
         MaterialPropertyBlock _mpb;
         GameObject _cursor;
         MeshRenderer _cursorRenderer;
+        bool _cursorHidden;
 
         void Awake()
         {
@@ -40,6 +55,7 @@ namespace SecretJenga.Game
 
         void OnDestroy()
         {
+            if (_cursorHidden) Cursor.visible = true;
             if (Instance == this) Instance = null;
         }
 
@@ -64,7 +80,7 @@ namespace SecretJenga.Game
 
             _cursor = new GameObject("RemoteCursor");
             _cursor.transform.SetParent(transform, false);
-            _cursor.AddComponent<MeshFilter>().sharedMesh = ProceduralMeshes.UVSphere(0.09f, 10, 16, "SJ_Cursor");
+            _cursor.AddComponent<MeshFilter>().sharedMesh = ProceduralMeshes.UVSphere(0.06f, 10, 16, "SJ_Cursor");
             _cursorRenderer = _cursor.AddComponent<MeshRenderer>();
             _cursorRenderer.sharedMaterial = assets.cursorMaterial != null ? assets.cursorMaterial : RuntimeArt.MakeLit(Color.white, 0.8f);
             _cursorRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
@@ -81,8 +97,16 @@ namespace SecretJenga.Game
                 HideGhosts();
                 _cursor.SetActive(false);
                 Hint = "";
+                CursorPrompt = Prompt.None;
+                HasHoverPoint = false;
+                HasTablePoint = false;
+                if (_cursorHidden) { Cursor.visible = true; _cursorHidden = false; }
                 return;
             }
+
+            // the hand is the cursor: hide the OS pointer while playing (menus bring it back)
+            bool wantHidden = !UIManager.BlocksGameInput;
+            if (wantHidden != _cursorHidden) { Cursor.visible = !wantHidden; _cursorHidden = wantHidden; }
 
             var turns = game.Turns;
             var stage = turns.Stage.Value;
@@ -90,10 +114,29 @@ namespace SecretJenga.Game
             UpdateGhosts(turns, stage, myTurn);
             UpdateRemoteCursor(game, turns, stage, myTurn);
 
+            CursorPrompt = Prompt.None;
+            HasHoverPoint = false;
+            HasTablePoint = false;
+            var m0 = Mouse.current;
+            if (m0 != null && !UIManager.BlocksGameInput)
+            {
+                var r0 = cam.ScreenPointToRay(m0.position.ReadValue());
+                var table = new Plane(Vector3.up, new Vector3(0f, JengaDims.TableTopY, 0f));
+                if (table.Raycast(r0, out float td))
+                {
+                    var tp = r0.GetPoint(td);
+                    var flat = Vector3.ClampMagnitude(new Vector3(tp.x, 0f, tp.z), SeatLayout.TableRadius - 0.6f);
+                    TablePoint = new Vector3(flat.x, JengaDims.TableTopY, flat.z);
+                    HasTablePoint = true;
+                }
+                var kb = Keyboard.current;
+                if (kb != null && kb.fKey.wasPressedThisFrame && HasTablePoint && stage != TurnStage.Dragging && stage != TurnStage.Carrying)
+                    HandSync.KnockLocal(TablePoint);
+            }
             if (!myTurn)
             {
                 SetHover(null);
-                Hint = stage == TurnStage.Settling ? "Waiting for the tower to settle..." : $"{game.PlayerName(turns.ActiveClientId.Value)} is playing...";
+                Hint = stage == TurnStage.Settling ? "The tower is settling..." : $"{game.PlayerName(turns.ActiveClientId.Value)} reaches for the tower...";
                 return;
             }
 
@@ -110,17 +153,29 @@ namespace SecretJenga.Game
                 case TurnStage.WaitingForGrab:
                 {
                     _releaseSent = false;
-                    Hint = "Your turn! Click a block and drag along it to push or pull it out.";
+                    bool pressured = turns.TouchMoveActive.Value;
+                    var committed = pressured ? JengaBlock.Find(turns.CommittedBlockId.Value) : null;
+                    Hint = committed != null ? "Pressure: you must finish pulling the block you touched."
+                        : pressured ? "Your turn - under PRESSURE: the first block you grab is the one you must take."
+                        : "Your turn. Hold the left mouse button on a block and pull it out along its length.";
                     JengaBlock hit = null;
                     RaycastHit info = default;
                     if (!overUI && Physics.Raycast(ray, out info, 200f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
                         hit = info.collider.GetComponentInParent<JengaBlock>();
-                    SetHover(hit, game.Tower);
+                    bool legal = hit != null && game.Tower.IsExtractableForUI(hit) && (committed == null || hit == committed);
+                    SetHover(hit, legal);
+                    if (hit != null)
+                    {
+                        HasHoverPoint = true;
+                        HoverPoint = info.point;
+                        HoverNormal = info.normal;
+                        CursorPrompt = legal ? Prompt.Grab : (committed != null ? Prompt.Committed : Prompt.Forbidden);
+                    }
                     if (hit != null && mouse.leftButton.wasPressedThisFrame)
                     {
-                        if (!game.Tower.IsExtractableForUI(hit))
+                        if (!legal)
                         {
-                            UIManager.Instance?.Toast("You can't take blocks from the top layers.", Palette.Bad);
+                            UIManager.Instance?.Toast(committed != null ? "Pressure: you must take the block you touched first." : "Blocks from the top rows cannot be taken.", Palette.Bad);
                             AudioManager.Instance?.Play(AudioManager.Sfx.Error);
                         }
                         else
@@ -133,7 +188,8 @@ namespace SecretJenga.Game
                 }
                 case TurnStage.Dragging:
                     SetHover(null);
-                    Hint = "Slide the block out along its length. Release the mouse to let go.";
+                    Hint = turns.SteadyGripActive.Value ? "Steady Grip: slow, straight pull. Release the mouse to let go."
+                        : "Pull slowly along the block's length. Release the mouse to let go.";
                     if (mouse.leftButton.isPressed)
                     {
                         if (_sendTimer <= 0f && _dragPlane.Raycast(ray, out float d))
@@ -151,7 +207,7 @@ namespace SecretJenga.Game
                 case TurnStage.Carrying:
                 {
                     SetHover(null);
-                    Hint = "Block is out! Move it over the tower and click a glowing slot to place it.";
+                    Hint = "The block is out. Move it over the tower and click a marked slot on top to place it.";
                     var center = turns.PlaceCenter.Value;
                     var carryPlane = new Plane(Vector3.up, new Vector3(0, center.y + JengaDims.BlockHeight * 2.5f, 0));
                     if (carryPlane.Raycast(ray, out float d))
@@ -170,7 +226,7 @@ namespace SecretJenga.Game
                 }
                 case TurnStage.Settling:
                     SetHover(null);
-                    Hint = "Nice! Waiting for the tower to settle...";
+                    Hint = "Placed. Waiting for the tower to settle...";
                     break;
             }
         }
@@ -189,11 +245,11 @@ namespace SecretJenga.Game
             return best;
         }
 
-        void SetHover(JengaBlock b, JengaTower tower = null)
+        void SetHover(JengaBlock b, bool legal = false)
         {
             if (_hovered != null && _hovered != b) _hovered.SetHover(JengaBlock.HoverMode.None);
             _hovered = b;
-            if (b != null) b.SetHover(tower != null && tower.IsExtractableForUI(b) ? JengaBlock.HoverMode.Valid : JengaBlock.HoverMode.Invalid);
+            if (b != null) b.SetHover(legal ? JengaBlock.HoverMode.Valid : JengaBlock.HoverMode.Invalid);
         }
 
         void HideGhosts()
@@ -213,7 +269,7 @@ namespace SecretJenga.Game
                 if (!free) continue;
                 _ghosts[i].transform.SetPositionAndRotation(JengaTower.SlotPosition(turns.PlaceCenter.Value, turns.PlaceRotY.Value, i), rot);
                 bool hot = myTurn && i == _hoverSlot;
-                var c = hot ? new Color(0.55f, 1f, 0.6f, 0.45f + 0.2f * pulse) : new Color(1f, 0.88f, 0.6f, 0.18f + 0.08f * pulse);
+                var c = hot ? new Color(0.95f, 0.85f, 0.6f, 0.42f + 0.15f * pulse) : new Color(0.85f, 0.8f, 0.7f, 0.12f + 0.06f * pulse);
                 _ghostRenderers[i].GetPropertyBlock(_mpb);
                 _mpb.SetColor("_BaseColor", c);
                 _ghostRenderers[i].SetPropertyBlock(_mpb);
@@ -222,14 +278,14 @@ namespace SecretJenga.Game
 
         void UpdateRemoteCursor(NetworkGameManager game, TurnManager turns, TurnStage stage, bool myTurn)
         {
-            bool show = !myTurn && (stage == TurnStage.Dragging || stage == TurnStage.Carrying);
+            bool show = false; // the other player's actual hand now shows the grip (PlayerAvatars/HandRig)
             _cursor.SetActive(show);
             if (!show) return;
             _cursor.transform.position = Vector3.Lerp(_cursor.transform.position, turns.CursorPoint.Value, 1f - Mathf.Exp(-20f * Time.deltaTime));
             _cursorRenderer.GetPropertyBlock(_mpb);
             var c = game.PlayerColor(turns.ActiveClientId.Value);
             _mpb.SetColor("_BaseColor", c);
-            _mpb.SetColor("_EmissionColor", c * 1.5f);
+            _mpb.SetColor("_EmissionColor", c * 0.6f);
             _cursorRenderer.SetPropertyBlock(_mpb);
         }
     }

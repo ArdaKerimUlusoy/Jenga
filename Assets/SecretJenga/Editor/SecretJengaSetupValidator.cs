@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text;
+using SecretJenga.Game;
 using Unity.Netcode;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -7,29 +8,34 @@ using UnityEngine;
 
 namespace SecretJenga.EditorTools
 {
-    /// <summary>Tools > Secret Jenga > Validate Setup / Open Setup Guide.</summary>
+    /// <summary>Tools > The Last Block > Validate Setup / Open Setup Guide.</summary>
     public static class SecretJengaSetupValidator
     {
-        [MenuItem("Tools/Secret Jenga/Validate Setup", priority = 20)]
+        [MenuItem("Tools/The Last Block/Validate Setup", priority = 20)]
         public static void Validate()
         {
             var sb = new StringBuilder();
             int problems = 0;
             void Ok(string s) => sb.AppendLine("OK   " + s);
             void Bad(string s) { sb.AppendLine("FIX  " + s); problems++; }
+            void Info(string s) => sb.AppendLine("--   " + s);
 
-            if (!string.IsNullOrEmpty(CloudProjectSettings.projectId)) Ok("Linked to Unity Cloud project " + CloudProjectSettings.projectId);
-            else Bad("Project is not linked to Unity Cloud (Edit > Project Settings > Services).");
+            if (!string.IsNullOrEmpty(CloudProjectSettings.projectId)) Ok("Linked to Unity Cloud project " + CloudProjectSettings.projectId + " (Online / Relay mode available)");
+            else Info("Not linked to Unity Cloud: only Direct (IP / LAN) mode will work. Link it in Edit > Project Settings > Services for Online (Relay) mode.");
 
             var reg = AssetDatabase.LoadAssetAtPath<SecretJengaAssets>(SecretJengaProjectGenerator.Root + "/Resources/SecretJengaAssets.asset");
-            if (reg == null) Bad("Asset registry missing - run Tools > Secret Jenga > Generate Project.");
+            if (reg == null) Bad("Asset registry missing - run Tools > The Last Block > Generate Project.");
             else
             {
                 if (reg.blockPrefab != null && reg.blockPrefab.GetComponent<NetworkObject>() != null) Ok("Block prefab (NetworkObject + NetworkTransform + NetworkRigidbody)");
                 else Bad("Block prefab missing or broken.");
-                if (reg.sessionPrefab != null) Ok("Session prefab"); else Bad("Session prefab missing.");
-                if (reg.music != null && reg.blockHits != null && reg.blockHits.Length > 0 && reg.blockHits[0] != null) Ok("Audio clips registered"); else Bad("Audio clips missing (game will be silent).");
-                if (reg.panel != null && reg.missionIcons != null && reg.missionIcons.Length == 8 && reg.missionIcons[1] != null) Ok("UI sprites registered"); else Bad("UI sprites missing (runtime fallbacks used).");
+                if (reg.sessionPrefab != null && reg.sessionPrefab.GetComponent<CardManager>() != null && reg.sessionPrefab.GetComponent<SecretTaskManager>() != null) Ok("Session prefab (turns, tower, tasks, cards, stability, atmosphere)");
+                else Bad("Session prefab missing or outdated - run Generate Project.");
+                if (reg.tasks != null && reg.tasks.Length > 0) Ok(reg.tasks.Length + " task definitions registered"); else Bad("No task definitions registered (runtime defaults will be used).");
+                if (reg.cards != null && reg.cards.Length > 0) Ok(reg.cards.Length + " card definitions registered"); else Bad("No card definitions registered (runtime defaults will be used).");
+                if (reg.music != null && reg.lampHumLoop != null && reg.collapseSting != null && reg.blockHits != null && reg.blockHits.Length > 0 && reg.blockHits[0] != null) Ok("Audio clips registered");
+                else Bad("Audio clips missing (game will be partly silent). Run Tools~/generate_horror_audio.py, then Generate Project.");
+                if (reg.panel != null) Ok("UI sprites registered"); else Bad("UI sprites missing (runtime fallbacks used).");
             }
 
             if (File.Exists(SecretJengaProjectGenerator.ScenePath)) Ok("Game scene exists");
@@ -50,15 +56,17 @@ namespace SecretJenga.EditorTools
                     if (!nm.NetworkConfig.EnableSceneManagement) Ok("Scene management disabled (single-scene game)"); else Bad("Disable 'Enable Scene Management' on the NetworkManager.");
                     if (nm.NetworkConfig.ConnectionApproval) Ok("Connection approval enabled"); else Bad("Enable Connection Approval on the NetworkManager.");
                 }
+                if (Object.FindFirstObjectByType<AtmosphereDirector>() != null) Ok("AtmosphereDirector in scene"); else Bad("AtmosphereDirector missing - regenerate the scene.");
+                if (Object.FindFirstObjectByType<PlayerAvatars>() != null) Ok("PlayerAvatars in scene"); else Bad("PlayerAvatars missing - regenerate the scene.");
             }
-            else sb.AppendLine("--   Open the game scene to validate the NetworkManager.");
+            else Info("Open the game scene to validate the NetworkManager.");
 
             sb.Insert(0, problems == 0 ? "Everything looks good!\n\n" : problems + " item(s) need attention:\n\n");
-            Debug.Log("[SecretJenga] Setup validation\n" + sb);
-            EditorUtility.DisplayDialog("Secret Jenga - Validate Setup", sb.ToString(), "OK");
+            Debug.Log("[TheLastBlock] Setup validation\n" + sb);
+            EditorUtility.DisplayDialog("The Last Block - Validate Setup", sb.ToString(), "OK");
         }
 
-        [MenuItem("Tools/Secret Jenga/Open Setup Guide (README)", priority = 21)]
+        [MenuItem("Tools/The Last Block/Open Setup Guide (README)", priority = 21)]
         public static void OpenGuide()
         {
             var path = SecretJengaProjectGenerator.Root + "/README.md";
@@ -67,7 +75,7 @@ namespace SecretJenga.EditorTools
             else EditorUtility.RevealInFinder(path);
         }
 
-        [MenuItem("Tools/Secret Jenga/Open Unity Dashboard", priority = 22)]
+        [MenuItem("Tools/The Last Block/Open Unity Dashboard", priority = 22)]
         public static void OpenDashboard() => Application.OpenURL("https://cloud.unity.com/");
     }
 }

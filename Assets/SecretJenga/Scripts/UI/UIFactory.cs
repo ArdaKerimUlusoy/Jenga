@@ -1,23 +1,78 @@
 using System;
 using UnityEngine;
 using UnityEngine.Events;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 namespace SecretJenga.UI
 {
     public enum ButtonStyle { Primary, Secondary, Danger, Ghost, Good }
 
-    /// <summary>Builds styled uGUI widgets in code so every screen shares one look and needs no hand-wired references.</summary>
+    /// <summary>Ink colours. Text on paper is written in dark ink; text straight over the dark room is bone white.</summary>
+    public static class Ink
+    {
+        public static readonly Color Black = new Color(0.13f, 0.105f, 0.085f);
+        public static readonly Color Faded = new Color(0.36f, 0.31f, 0.26f);
+        public static readonly Color Pencil = new Color(0.36f, 0.31f, 0.26f, 0.45f);
+        public static readonly Color Red = new Color(0.60f, 0.11f, 0.07f);
+        public static readonly Color RedBright = new Color(0.78f, 0.20f, 0.14f);
+        public static readonly Color Green = new Color(0.20f, 0.30f, 0.18f);
+        public static readonly Color Bone = new Color(0.87f, 0.83f, 0.74f);
+        public static readonly Color BoneDim = new Color(0.62f, 0.58f, 0.52f);
+        public static readonly Color BoneFaint = new Color(0.87f, 0.83f, 0.74f, 0.32f);
+        public static readonly Color Shadow = new Color(0f, 0f, 0f, 0.75f);
+    }
+
+    public enum FontKind { Title, Body, Type }
+
+    /// <summary>
+    /// Builds the hand-made looking uGUI in code: torn paper sheets held by tape, typewritten fields with ink
+    /// underlines, words you click instead of boxes, wax-like ink marks for players. Everything is generated
+    /// from a few greyscale/white sprites (Tools~/generate_ui_textures.py) and three fonts (IM Fell English SC,
+    /// IM Fell English, Special Elite - all SIL OFL / Apache, see Fonts/). Missing assets fall back gracefully.
+    /// </summary>
     public static class UIFactory
     {
         static SecretJengaAssets A => SecretJengaAssets.Instance;
-        public static Font Font => RuntimeArt.Font;
 
-        public static Sprite PanelSprite => A.panel != null ? A.panel : RuntimeArt.Rounded;
-        public static Sprite ButtonSprite => A.button != null ? A.button : RuntimeArt.Rounded;
+        /// <summary>True while building widgets that sit on paper (dark ink); false over the dark room (bone ink).</summary>
+        public static bool OnPaper;
+
+        public static Font Font => A.fontBody != null ? A.fontBody : RuntimeArt.Font;
+        public static Font TitleFont => A.fontTitle != null ? A.fontTitle : Font;
+        public static Font TypeFont => A.fontType != null ? A.fontType : Font;
+        static Font FontOf(FontKind k) => k == FontKind.Title ? TitleFont : k == FontKind.Type ? TypeFont : Font;
+
+        public static Color InkC => OnPaper ? Ink.Black : Ink.Bone;
+        public static Color FadedC => OnPaper ? Ink.Faded : Ink.BoneDim;
+        public static Color AccentC => OnPaper ? Ink.Red : Ink.RedBright;
+
         public static Sprite RoundedSprite => A.rounded != null ? A.rounded : RuntimeArt.Rounded;
         public static Sprite PillSprite => A.pill != null ? A.pill : RuntimeArt.Rounded;
         public static Sprite CircleSprite => A.circle != null ? A.circle : RuntimeArt.Circle;
+        public static Sprite PaperSprite => A.paper != null ? A.paper : RuntimeArt.Rounded;
+        public static Sprite SlipSprite => A.paperSlip != null ? A.paperSlip : PaperSprite;
+        public static Sprite StrokeSprite => A.inkStroke != null ? A.inkStroke : RuntimeArt.Rounded;
+        public static Sprite BlotSprite => A.inkBlot != null ? A.inkBlot : RuntimeArt.Circle;
+
+        static Sprite _fade;
+        /// <summary>Horizontal black-to-clear gradient (keeps menu text readable over the 3D room).</summary>
+        public static Sprite FadeSprite
+        {
+            get
+            {
+                if (_fade != null) return _fade;
+                var t = new Texture2D(256, 1, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp, name = "TLB_UIFade" };
+                for (int x = 0; x < 256; x++)
+                {
+                    float k = x / 255f;
+                    t.SetPixel(x, 0, new Color(0, 0, 0, Mathf.Pow(1f - k, 1.6f)));
+                }
+                t.Apply();
+                _fade = Sprite.Create(t, new Rect(0, 0, 256, 1), new Vector2(0.5f, 0.5f));
+                return _fade;
+            }
+        }
 
         // ------------------------------------------------------------------ Rect helpers
         public static RectTransform Rect(string name, Transform parent)
@@ -84,7 +139,7 @@ namespace SecretJenga.UI
             return h;
         }
 
-        // ------------------------------------------------------------------ Visual primitives
+        // ------------------------------------------------------------------ Primitives
         public static Image Image(Transform parent, string name, Sprite sprite, Color color, bool sliced = true)
         {
             var rt = Rect(name, parent);
@@ -96,31 +151,27 @@ namespace SecretJenga.UI
             return img;
         }
 
-        /// <summary>Wooden card with a soft drop shadow.</summary>
-        public static Image Card(Transform parent, string name, Color? color = null)
-        {
-            var shadow = Image(parent, name + "_Shadow", RoundedSprite, new Color(0, 0, 0, 0.35f));
-            var card = Image(shadow.transform, name, PanelSprite, color ?? Palette.Walnut);
-            card.raycastTarget = true;
-            Stretch(card.rectTransform, 0, 0, 0, 6);
-            shadow.rectTransform.pivot = new Vector2(0.5f, 0.5f);
-            return card;
-        }
-
         public static Text Text(Transform parent, string text, int size, Color color, TextAnchor align = TextAnchor.MiddleCenter, FontStyle style = FontStyle.Normal, string name = "Text")
+            => Write(parent, FontKind.Body, text, size, color, align, style, name);
+
+        /// <summary>Text in one of the three faces (Title = engraved small caps, Body = old book face, Type = typewriter).</summary>
+        public static Text Write(Transform parent, FontKind kind, string text, int size, Color color, TextAnchor align = TextAnchor.MiddleLeft, FontStyle style = FontStyle.Normal, string name = "Text")
         {
             var rt = Rect(name, parent);
             var t = rt.gameObject.AddComponent<Text>();
-            t.font = Font;
+            t.font = FontOf(kind);
+            // the faces have no real bold - fake weight looks digital, so keep them as drawn
+            t.fontStyle = kind == FontKind.Body ? (style == FontStyle.Bold ? FontStyle.Normal : style == FontStyle.BoldAndItalic ? FontStyle.Italic : style) : FontStyle.Normal;
             t.text = text;
             t.fontSize = size;
             t.color = color;
             t.alignment = align;
-            t.fontStyle = style;
             t.horizontalOverflow = HorizontalWrapMode.Wrap;
             t.verticalOverflow = VerticalWrapMode.Overflow;
+            t.lineSpacing = kind == FontKind.Type ? 1.05f : 0.95f;
             t.raycastTarget = false;
             t.supportRichText = true;
+            if (!OnPaper && kind != FontKind.Title) AddShadow(t, new Color(0, 0, 0, 0.8f), new Vector2(1.5f, -2f));
             return t;
         }
 
@@ -132,51 +183,115 @@ namespace SecretJenga.UI
             return s;
         }
 
-        // ------------------------------------------------------------------ Buttons
-        public static void StyleColors(ButtonStyle style, out Color normal, out Color text)
+        /// <summary>Spaced capitals for small labels: "T U R N  O R D E R".</summary>
+        public static string Spaced(string s)
         {
-            switch (style)
-            {
-                case ButtonStyle.Secondary: normal = Palette.Paper; text = Palette.Ink; break;
-                case ButtonStyle.Danger: normal = Palette.Bad; text = Color.white; break;
-                case ButtonStyle.Ghost: normal = new Color(1, 1, 1, 0.08f); text = Palette.Cream; break;
-                case ButtonStyle.Good: normal = Palette.Good; text = Color.white; break;
-                default: normal = Palette.Accent; text = Palette.WalnutDark; break;
-            }
+            var sb = new System.Text.StringBuilder();
+            foreach (var ch in s.ToUpperInvariant()) { sb.Append(ch); sb.Append(ch == ' ' ? "  " : " "); }
+            return sb.ToString().TrimEnd();
         }
 
+        public static Text Title(Transform parent, string text, int size = 54)
+        {
+            var t = Write(parent, FontKind.Title, text, size, InkC, TextAnchor.MiddleLeft, FontStyle.Normal, "Title");
+            if (!OnPaper) AddShadow(t, new Color(0, 0, 0, 0.9f), new Vector2(2, -3));
+            t.horizontalOverflow = HorizontalWrapMode.Overflow;
+            LE(t, size * 1.25f);
+            return t;
+        }
+
+        /// <summary>Small typed caption (a form field label, a section mark).</summary>
+        public static Text Caption(Transform parent, string text, int size = 20)
+        {
+            var t = Write(parent, FontKind.Type, text, size, FadedC, TextAnchor.MiddleLeft);
+            LE(t, size * 1.4f);
+            return t;
+        }
+
+        /// <summary>A hand-drawn ink rule.</summary>
+        public static Image Divider(Transform parent, float height = 9f)
+        {
+            var d = Image(parent, "Rule", StrokeSprite, OnPaper ? Ink.Pencil : new Color(Ink.Bone.r, Ink.Bone.g, Ink.Bone.b, 0.22f), false);
+            LE(d, height);
+            return d;
+        }
+
+        // ------------------------------------------------------------------ Paper
+        public class Sheet
+        {
+            public RectTransform Root, Paper, Body;
+            public Image PaperImage;
+        }
+
+        /// <summary>
+        /// A torn sheet of paper taped over the scene. Root carries the position + slight tilt, Body is a padded
+        /// vertical column for content. Sets OnPaper = true (dark ink) for whatever is built next.
+        /// </summary>
+        public static Sheet PaperSheet(Transform parent, string name, Vector2 anchor, Vector2 pos, Vector2 size, float tilt, int tapes = 2, int pad = 56, bool slip = false)
+        {
+            var s = new Sheet();
+            s.Root = Rect(name, parent);
+            Place(s.Root, anchor, new Vector2(0.5f, 0.5f), pos, size);
+            s.Root.localRotation = Quaternion.Euler(0, 0, tilt);
+
+            var sprite = slip ? SlipSprite : PaperSprite;
+            var shadow = Image(s.Root, "Shadow", sprite, new Color(0, 0, 0, 0.6f));
+            Stretch(shadow.rectTransform, -6, 2, -14, -18);
+            var paper = Image(s.Root, "Paper", sprite, Color.white);
+            paper.raycastTarget = true;
+            Stretch(paper.rectTransform);
+            s.Paper = paper.rectTransform;
+            s.PaperImage = paper;
+
+            if (A.tape != null)
+            {
+                var rnd = new System.Random(name.GetHashCode());
+                for (int i = 0; i < tapes; i++)
+                {
+                    float side = tapes == 1 ? 0f : (i == 0 ? -1f : 1f);
+                    var tape = Image(s.Root, "Tape", A.tape, new Color(1f, 1f, 1f, 0.92f), false);
+                    var x = side * (size.x * 0.5f - 46f);
+                    Place(tape.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 0.5f), new Vector2(x, -4f), new Vector2(slip ? 120 : 160, slip ? 36 : 46));
+                    tape.rectTransform.localRotation = Quaternion.Euler(0, 0, side * -(22f + (float)rnd.NextDouble() * 14f) + (side == 0 ? (float)rnd.NextDouble() * 8f - 4f : 0f));
+                }
+            }
+
+            s.Body = Rect("Body", s.Root);
+            Stretch(s.Body, pad, pad - 6, pad, pad - 10);
+            VLayout(s.Body, 12, 0, TextAnchor.UpperLeft);
+            OnPaper = true;
+            return s;
+        }
+
+        // ------------------------------------------------------------------ Buttons: words you click
         public static Button Button(Transform parent, string label, UnityAction onClick, ButtonStyle style = ButtonStyle.Primary, int fontSize = 30, Sprite icon = null)
         {
-            StyleColors(style, out var normal, out var textColor);
-            var img = Image(parent, "Btn_" + label, ButtonSprite, Color.white);
-            img.raycastTarget = true;
-            var btn = img.gameObject.AddComponent<Button>();
-            btn.targetGraphic = img;
-            var cb = btn.colors;
-            cb.normalColor = normal;
-            cb.highlightedColor = Color.Lerp(normal, Color.white, 0.18f);
-            cb.pressedColor = Color.Lerp(normal, Color.black, 0.15f);
-            cb.selectedColor = normal;
-            cb.disabledColor = new Color(normal.r * 0.6f, normal.g * 0.6f, normal.b * 0.6f, 0.5f);
-            cb.fadeDuration = 0.08f;
-            btn.colors = cb;
+            var root = Rect("Btn_" + label, parent);
+            var hit = root.gameObject.AddComponent<Image>();
+            hit.color = new Color(0, 0, 0, 0); // invisible hit area
+            var btn = root.gameObject.AddComponent<Button>();
+            btn.transition = Selectable.Transition.None;
+            btn.targetGraphic = hit;
+            var nav = btn.navigation;
+            nav.mode = Navigation.Mode.None;
+            btn.navigation = nav;
             if (onClick != null) btn.onClick.AddListener(onClick);
 
-            var row = Rect("Content", img.transform);
-            Stretch(row, 16, 4, 16, 4);
-            var h = HLayout(row, 12, 0, TextAnchor.MiddleCenter, false);
-            h.childForceExpandHeight = false;
+            Color ink = style == ButtonStyle.Danger ? AccentC : style == ButtonStyle.Ghost ? FadedC : InkC;
+            var kind = style == ButtonStyle.Primary || style == ButtonStyle.Danger || style == ButtonStyle.Good ? FontKind.Title : FontKind.Body;
 
-            if (icon != null)
-            {
-                var ic = Image(row, "Icon", icon, textColor, false);
-                ic.preserveAspect = true;
-                LE(ic, fontSize * 1.1f, fontSize * 1.1f);
-            }
-            var t = Text(row, label, fontSize, textColor, TextAnchor.MiddleCenter, FontStyle.Bold, "Label");
+            var underline = Image(root, "Underline", StrokeSprite, AccentC, false);
+            underline.type = UnityEngine.UI.Image.Type.Filled;
+            underline.fillMethod = UnityEngine.UI.Image.FillMethod.Horizontal;
+            underline.fillAmount = 0f;
+
+            var t = Write(root, kind, label, fontSize, ink, TextAnchor.MiddleLeft, style == ButtonStyle.Ghost ? FontStyle.Italic : FontStyle.Normal, "Label");
             t.horizontalOverflow = HorizontalWrapMode.Overflow;
-            LE(t, fontSize * 1.4f);
-            img.gameObject.AddComponent<UIButtonFX>();
+            Stretch(t.rectTransform, 0, 0, 0, 4);
+
+            var fx = root.gameObject.AddComponent<InkButtonFX>();
+            fx.Init(btn, t, underline, ink, AccentC);
+            LE(root, fontSize * 1.55f, t.preferredWidth + 24f);
             return btn;
         }
 
@@ -186,39 +301,70 @@ namespace SecretJenga.UI
             if (t != null) t.text = label;
         }
 
+        /// <summary>Makes a plain row of buttons line up from the left (menus are written, not boxed).</summary>
+        public static RectTransform ButtonRow(Transform parent, float height = 70, float spacing = 46, TextAnchor align = TextAnchor.MiddleLeft)
+        {
+            var row = Rect("Buttons", parent);
+            LE(row, height);
+            var h = HLayout(row, spacing, 0, align, false);
+            h.childControlWidth = true;
+            h.childForceExpandHeight = true;
+            return row;
+        }
+
+        /// <summary>A small clickable symbol (refresh, copy...) drawn in ink.</summary>
         public static Button IconButton(Transform parent, Sprite icon, UnityAction onClick, Color bg, Color fg, float size = 64)
         {
-            var img = Image(parent, "IconBtn", CircleSprite, bg, false);
-            img.raycastTarget = true;
-            var btn = img.gameObject.AddComponent<Button>();
-            btn.targetGraphic = img;
+            var root = Rect("IconBtn", parent);
+            var hit = root.gameObject.AddComponent<Image>();
+            hit.color = new Color(0, 0, 0, 0);
+            var btn = root.gameObject.AddComponent<Button>();
+            btn.transition = Selectable.Transition.None;
+            btn.targetGraphic = hit;
             if (onClick != null) btn.onClick.AddListener(onClick);
-            var ic = Image(img.transform, "Icon", icon != null ? icon : CircleSprite, fg, false);
+            var ic = Image(root, "Icon", icon != null ? icon : BlotSprite, fg, false);
             ic.preserveAspect = true;
-            Stretch(ic.rectTransform, size * 0.22f, size * 0.22f, size * 0.22f, size * 0.22f);
-            img.gameObject.AddComponent<UIButtonFX>();
-            LE(img, size, size);
-            img.rectTransform.sizeDelta = new Vector2(size, size);
+            Stretch(ic.rectTransform, size * 0.16f, size * 0.16f, size * 0.16f, size * 0.16f);
+            root.gameObject.AddComponent<InkButtonFX>().Init(btn, null, null, fg, AccentC, ic);
+            LE(root, size, size);
+            root.sizeDelta = new Vector2(size, size);
             return btn;
         }
 
         // ------------------------------------------------------------------ Inputs
+        /// <summary>A typewritten field on a ruled line.</summary>
         public static InputField Input(Transform parent, string placeholder, string value, int charLimit, int fontSize = 30)
         {
-            var bg = Image(parent, "Input", RoundedSprite, new Color(0.10f, 0.06f, 0.04f, 0.65f));
-            bg.raycastTarget = true;
-            var field = bg.gameObject.AddComponent<InputField>();
-            var text = Text(bg.transform, "", fontSize, Palette.Cream, TextAnchor.MiddleLeft);
-            Stretch(text.rectTransform, 20, 6, 20, 6);
+            var root = Rect("Field", parent);
+            var hit = root.gameObject.AddComponent<Image>();
+            hit.color = new Color(0, 0, 0, 0);
+            var line = Image(root, "Line", StrokeSprite, OnPaper ? Ink.Pencil : Ink.BoneFaint, false);
+            Place(line.rectTransform, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0, 2), Vector2.zero);
+            line.rectTransform.anchorMin = new Vector2(0f, 0f);
+            line.rectTransform.anchorMax = new Vector2(1f, 0f);
+            line.rectTransform.sizeDelta = new Vector2(0, 8);
+            var field = root.gameObject.AddComponent<InputField>();
+            var nav = field.navigation;
+            nav.mode = Navigation.Mode.None;
+            field.navigation = nav;
+            field.transition = Selectable.Transition.None;
+            var text = Write(root, FontKind.Type, "", fontSize, InkC, TextAnchor.LowerLeft);
+            Stretch(text.rectTransform, 4, 0, 4, 10);
             text.supportRichText = false;
-            var ph = Text(bg.transform, placeholder, fontSize, new Color(1, 1, 1, 0.35f), TextAnchor.MiddleLeft, FontStyle.Italic);
-            Stretch(ph.rectTransform, 20, 6, 20, 6);
+            var ph = Write(root, FontKind.Body, placeholder, fontSize, OnPaper ? Ink.Pencil : Ink.BoneFaint, TextAnchor.LowerLeft, FontStyle.Italic);
+            Stretch(ph.rectTransform, 4, 0, 4, 10);
             field.textComponent = text;
             field.placeholder = ph;
             field.characterLimit = charLimit;
             field.text = value ?? "";
-            field.caretColor = Palette.Accent;
-            field.selectionColor = new Color(Palette.Accent.r, Palette.Accent.g, Palette.Accent.b, 0.4f);
+            field.caretColor = AccentC;
+            field.caretWidth = 2;
+            field.selectionColor = new Color(Ink.Red.r, Ink.Red.g, Ink.Red.b, 0.25f);
+            var fx = root.gameObject.AddComponent<FieldFX>();
+            fx.Line = line;
+            fx.Idle = line.color;
+            fx.Active = AccentC;
+            fx.Field = field;
             return field;
         }
 
@@ -248,49 +394,53 @@ namespace SecretJenga.UI
             }
         }
 
+        /// <summary>"Turn timer ............ ‹ 60 s ›"</summary>
         public static StepperRef Stepper(Transform parent, string label, int min, int max, int value, int step, Func<int, string> format, Action<int> onChanged)
         {
             var row = Rect("Stepper_" + label, parent);
-            LE(row, 64);
-            var h = HLayout(row, 10, 0, TextAnchor.MiddleLeft, false);
+            LE(row, 50);
+            var h = HLayout(row, 6, 0, TextAnchor.MiddleLeft, false);
             h.childForceExpandHeight = true;
-            var l = Text(row, label, 28, Palette.Cream, TextAnchor.MiddleLeft);
+            var l = Write(row, FontKind.Body, label, 27, InkC, TextAnchor.MiddleLeft);
             LE(l, -1, -1, 1);
             var s = new StepperRef { Min = min, Max = max, Step = step, Format = format, OnChanged = onChanged };
-            s.Minus = Button(row, "-", () => s.Set(s.Value - s.Step, true), ButtonStyle.Secondary, 34);
-            LE(s.Minus, 60, 64);
-            var vb = Image(row, "Value", PillSprite, new Color(0, 0, 0, 0.3f));
-            LE(vb, 60, 150);
-            s.ValueText = Text(vb.transform, "", 30, Palette.Cream, TextAnchor.MiddleCenter, FontStyle.Bold);
-            Stretch(s.ValueText.rectTransform);
-            s.Plus = Button(row, "+", () => s.Set(s.Value + s.Step, true), ButtonStyle.Secondary, 34);
-            LE(s.Plus, 60, 64);
+            s.Minus = Button(row, "‹", () => s.Set(s.Value - s.Step, true), ButtonStyle.Secondary, 38);
+            LE(s.Minus, 50, 34);
+            s.ValueText = Write(row, FontKind.Type, "", 28, InkC, TextAnchor.MiddleCenter);
+            LE(s.ValueText, 50, 120);
+            s.Plus = Button(row, "›", () => s.Set(s.Value + s.Step, true), ButtonStyle.Secondary, 38);
+            LE(s.Plus, 50, 34);
             s.Set(value, false);
             return s;
         }
 
+        /// <summary>A pencil line with an ink blot you drag.</summary>
         public static Slider Slider(Transform parent, string label, float value, Action<float> onChanged)
         {
             var row = Rect("Slider_" + label, parent);
-            LE(row, 60);
-            var h = HLayout(row, 16, 0, TextAnchor.MiddleLeft, false);
-            var l = Text(row, label, 28, Palette.Cream, TextAnchor.MiddleLeft);
-            LE(l, -1, 260);
+            LE(row, 50);
+            HLayout(row, 18, 0, TextAnchor.MiddleLeft, false);
+            var l = Write(row, FontKind.Body, label, 27, InkC, TextAnchor.MiddleLeft);
+            LE(l, -1, 300);
 
             var root = Rect("Slider", row);
             LE(root, 40, -1, 1);
             var slider = root.gameObject.AddComponent<Slider>();
-            var bg = Image(root, "Track", PillSprite, new Color(0, 0, 0, 0.35f));
-            Stretch(bg.rectTransform, 0, 14, 0, 14);
+            var nav = slider.navigation;
+            nav.mode = Navigation.Mode.None;
+            slider.navigation = nav;
+            slider.transition = Selectable.Transition.None;
+            var bg = Image(root, "Track", StrokeSprite, OnPaper ? Ink.Pencil : Ink.BoneFaint, false);
+            Stretch(bg.rectTransform, 0, 16, 0, 16);
             var fillArea = Rect("FillArea", root);
-            Stretch(fillArea, 8, 14, 8, 14);
-            var fill = Image(fillArea, "Fill", PillSprite, Palette.Accent);
+            Stretch(fillArea, 0, 15, 12, 15);
+            var fill = Image(fillArea, "Fill", StrokeSprite, InkC, false);
             Stretch(fill.rectTransform);
             var handleArea = Rect("HandleArea", root);
-            Stretch(handleArea, 14, 0, 14, 0);
-            var handle = Image(handleArea, "Handle", CircleSprite, Palette.Cream, false);
+            Stretch(handleArea, 12, 0, 12, 0);
+            var handle = Image(handleArea, "Blot", BlotSprite, AccentC, false);
             handle.raycastTarget = true;
-            handle.rectTransform.sizeDelta = new Vector2(34, 0);
+            handle.rectTransform.sizeDelta = new Vector2(30, 0);
             slider.fillRect = fill.rectTransform;
             slider.handleRect = handle.rectTransform;
             slider.targetGraphic = handle;
@@ -301,54 +451,165 @@ namespace SecretJenga.UI
             return slider;
         }
 
+        /// <summary>"[x]  label" on a typewriter.</summary>
         public static Toggle Toggle(Transform parent, string label, bool value, Action<bool> onChanged)
         {
             var row = Rect("Toggle_" + label, parent);
-            LE(row, 56);
-            var h = HLayout(row, 16, 0, TextAnchor.MiddleLeft, false);
-            var box = Image(row, "Box", RoundedSprite, new Color(0, 0, 0, 0.35f));
-            box.raycastTarget = true;
-            LE(box, 44, 44);
-            var check = Image(box.transform, "Check", A.iconCheck != null ? A.iconCheck : RoundedSprite, Palette.Accent, false);
-            Stretch(check.rectTransform, 7, 7, 7, 7);
-            var l = Text(row, label, 28, Palette.Cream, TextAnchor.MiddleLeft);
+            LE(row, 46);
+            HLayout(row, 14, 0, TextAnchor.MiddleLeft, false);
+            var hit = row.gameObject.AddComponent<Image>();
+            hit.color = new Color(0, 0, 0, 0);
+            var box = Write(row, FontKind.Type, "[   ]", 26, InkC, TextAnchor.MiddleLeft, FontStyle.Normal, "Box");
+            LE(box, 46, 66);
+            var check = Write(box.transform, FontKind.Title, "x", 34, AccentC, TextAnchor.MiddleCenter, FontStyle.Normal, "Check");
+            Stretch(check.rectTransform, 0, -6, 6, 0);
+            check.rectTransform.localRotation = Quaternion.Euler(0, 0, -8);
+            var l = Write(row, FontKind.Body, label, 25, InkC, TextAnchor.MiddleLeft);
             LE(l, -1, -1, 1);
             var t = row.gameObject.AddComponent<Toggle>();
-            t.targetGraphic = box;
+            var nav = t.navigation;
+            nav.mode = Navigation.Mode.None;
+            t.navigation = nav;
+            t.transition = Selectable.Transition.None;
+            t.targetGraphic = hit;
             t.graphic = check;
             t.isOn = value;
             if (onChanged != null) t.onValueChanged.AddListener(v => onChanged(v));
-            row.gameObject.AddComponent<UIButtonFX>().scaleOnHover = 1.0f;
+            row.gameObject.AddComponent<InkButtonFX>().Init(t, l, null, InkC, AccentC);
             return t;
         }
 
-        /// <summary>Round avatar with initial letter in the player's color.</summary>
+        // ------------------------------------------------------------------ Marks
+        /// <summary>A player's mark: a blot of their ink with their initial scratched out of it.</summary>
         public static Image Avatar(Transform parent, string name, Color color, float size)
         {
-            var ring = Image(parent, "Avatar", CircleSprite, Palette.Cream, false);
-            LE(ring, size, size);
-            ring.rectTransform.sizeDelta = new Vector2(size, size);
-            var inner = Image(ring.transform, "Fill", CircleSprite, color, false);
-            Stretch(inner.rectTransform, size * 0.07f, size * 0.07f, size * 0.07f, size * 0.07f);
-            var letter = Text(inner.transform, string.IsNullOrEmpty(name) ? "?" : name.Substring(0, 1).ToUpperInvariant(), Mathf.RoundToInt(size * 0.5f), Color.white, TextAnchor.MiddleCenter, FontStyle.Bold);
-            Stretch(letter.rectTransform);
-            AddShadow(letter, new Color(0, 0, 0, 0.35f), new Vector2(1, -2));
-            return ring;
+            var blot = Image(parent, "Mark", BlotSprite, color, false);
+            LE(blot, size, size);
+            blot.rectTransform.sizeDelta = new Vector2(size, size);
+            blot.rectTransform.localRotation = Quaternion.Euler(0, 0, (name != null ? name.GetHashCode() % 40 : 0));
+            var letter = Write(blot.transform, FontKind.Title, string.IsNullOrEmpty(name) ? "?" : name.Substring(0, 1).ToUpperInvariant(),
+                Mathf.RoundToInt(size * 0.55f), new Color(0.95f, 0.92f, 0.85f, 0.92f), TextAnchor.MiddleCenter);
+            Stretch(letter.rectTransform, 0, 0, 0, size * 0.04f);
+            letter.rectTransform.localRotation = Quaternion.Inverse(blot.rectTransform.localRotation);
+            return blot;
         }
 
-        public static Text Title(Transform parent, string text, int size = 54)
+        /// <summary>A rubber stamp: boxed letters in ink, slightly rotated.</summary>
+        public static RectTransform Stamp(Transform parent, string text, Color color, Vector2 size, float angle)
         {
-            var t = Text(parent, text, size, Palette.Cream, TextAnchor.MiddleCenter, FontStyle.Bold, "Title");
-            AddShadow(t, new Color(0, 0, 0, 0.5f), new Vector2(2, -3));
-            LE(t, size * 1.5f);
-            return t;
+            var root = Rect("Stamp", parent);
+            root.sizeDelta = size;
+            root.localRotation = Quaternion.Euler(0, 0, angle);
+            if (A.stamp != null)
+            {
+                var frame = Image(root, "Frame", A.stamp, color, false);
+                Stretch(frame.rectTransform);
+            }
+            var t = Write(root, FontKind.Title, text, Mathf.RoundToInt(size.y * 0.5f), color, TextAnchor.MiddleCenter, FontStyle.Normal, "StampText");
+            t.horizontalOverflow = HorizontalWrapMode.Overflow;
+            Stretch(t.rectTransform, 10, 4, 10, 0);
+            return root;
+        }
+    }
+
+    /// <summary>
+    /// Hover feedback for written buttons: an ink underline is drawn under the word, the word moves a little and
+    /// turns red; disabled words fade like pencil. Also plays the UI sounds.
+    /// </summary>
+    public class InkButtonFX : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler, IPointerDownHandler
+    {
+        Selectable _sel;
+        Text _label;
+        Image _underline, _icon;
+        Color _ink, _hover;
+        bool _over;
+        float _k;
+        Vector2 _labelBase;
+        bool _hasBase;
+
+        public void Init(Selectable sel, Text label, Image underline, Color ink, Color hover, Image icon = null)
+        {
+            _sel = sel;
+            _label = label;
+            _underline = underline;
+            _ink = ink;
+            _hover = hover;
+            _icon = icon;
         }
 
-        public static Image Divider(Transform parent)
+        bool Usable => _sel == null || _sel.IsInteractable();
+
+        public void OnPointerEnter(PointerEventData e)
         {
-            var d = Image(parent, "Divider", RoundedSprite, new Color(1, 1, 1, 0.12f));
-            LE(d, 3);
-            return d;
+            _over = true;
+            if (Usable) AudioManager.Instance?.Play(AudioManager.Sfx.UIHover, 0.4f);
+        }
+
+        public void OnPointerExit(PointerEventData e) => _over = false;
+
+        public void OnPointerDown(PointerEventData e)
+        {
+            if (!Usable) return;
+            AudioManager.Instance?.Play(AudioManager.Sfx.UIClick, 0.8f);
+            _k = Mathf.Min(_k, 0.5f);
+        }
+
+        void OnDisable() { _over = false; _k = 0f; Apply(); }
+
+        void Update()
+        {
+            float target = _over && Usable ? 1f : 0f;
+            _k = Mathf.MoveTowards(_k, target, Time.unscaledDeltaTime * (target > _k ? 5f : 7f));
+            Apply();
+        }
+
+        LayoutElement _le;
+        string _sized;
+
+        void Apply()
+        {
+            bool usable = Usable;
+            if (_label != null && _underline != null && _sized != _label.text)
+            {
+                // written buttons are as wide as their word
+                _sized = _label.text;
+                if (_le == null) _le = GetComponent<LayoutElement>();
+                if (_le != null) { _le.preferredWidth = _label.preferredWidth + 24f; _le.minWidth = _le.preferredWidth; }
+            }
+            float e = 1f - (1f - _k) * (1f - _k);
+            var c = Color.Lerp(_ink, _hover, e);
+            if (!usable) c.a *= 0.32f;
+            if (_label != null)
+            {
+                if (!_hasBase) { _labelBase = _label.rectTransform.anchoredPosition; _hasBase = true; }
+                _label.color = c;
+                _label.rectTransform.anchoredPosition = _labelBase + new Vector2(e * 8f, 0f);
+            }
+            if (_icon != null) _icon.color = c;
+            if (_underline != null && _label != null)
+            {
+                _underline.fillAmount = e;
+                var rt = _underline.rectTransform;
+                float w = Mathf.Min(_label.preferredWidth + 20f, ((RectTransform)transform).rect.width + 40f);
+                rt.anchorMin = rt.anchorMax = new Vector2(_label.alignment == TextAnchor.MiddleCenter ? 0.5f : 0f, 0f);
+                rt.pivot = new Vector2(_label.alignment == TextAnchor.MiddleCenter ? 0.5f : 0f, 0.5f);
+                rt.sizeDelta = new Vector2(w, Mathf.Max(8f, _label.fontSize * 0.28f));
+                rt.anchoredPosition = new Vector2(_label.alignment == TextAnchor.MiddleCenter ? 0f : -4f, 6f);
+            }
+        }
+    }
+
+    /// <summary>The ruled line under a typed field turns to red ink while you type in it.</summary>
+    public class FieldFX : MonoBehaviour
+    {
+        public Image Line;
+        public Color Idle, Active;
+        public InputField Field;
+
+        void Update()
+        {
+            if (Line == null || Field == null) return;
+            Line.color = Color.Lerp(Line.color, Field.isFocused ? Active : Idle, 1f - Mathf.Exp(-12f * Time.unscaledDeltaTime));
         }
     }
 }

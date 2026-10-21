@@ -19,6 +19,12 @@ namespace SecretJenga
         const string KProfile = "sj_auth_profile";
         const string KLastLobby = "sj_last_lobby";
         const string KAvatar = "sj_avatar_color";
+        const string KDirect = "tlb_direct_mode";
+        const string KAddress = "tlb_direct_address";
+        const string KPort = "tlb_direct_port";
+        const string KOfflineId = "tlb_offline_id_";
+
+        public const ushort DefaultPort = 7777;
 
         public static event Action Changed;
 
@@ -59,6 +65,35 @@ namespace SecretJenga
         public static bool AllowSoloStart { get => PlayerPrefs.GetInt(KSolo, 0) == 1; set { PlayerPrefs.SetInt(KSolo, value ? 1 : 0); Save(); } }
 
         public static string LastLobbyId { get => PlayerPrefs.GetString(KLastLobby, ""); set { PlayerPrefs.SetString(KLastLobby, value ?? ""); PlayerPrefs.Save(); } }
+
+        /// <summary>True = connect by IP address (LAN / port forwarding, no Unity services). False = Unity Relay + Lobby.</summary>
+        public static bool UseDirectConnection { get => PlayerPrefs.GetInt(KDirect, 1) == 1; set { PlayerPrefs.SetInt(KDirect, value ? 1 : 0); Save(); } }
+        public static string LastDirectAddress { get => PlayerPrefs.GetString(KAddress, "127.0.0.1"); set { PlayerPrefs.SetString(KAddress, string.IsNullOrWhiteSpace(value) ? "127.0.0.1" : value.Trim()); PlayerPrefs.Save(); } }
+        public static ushort DirectPort
+        {
+            get => (ushort)Mathf.Clamp(PlayerPrefs.GetInt(KPort, DefaultPort), 1024, 65535);
+            set { PlayerPrefs.SetInt(KPort, value); PlayerPrefs.Save(); }
+        }
+
+        /// <summary>
+        /// Stable player identity used when Unity Authentication is not available (direct-IP sessions).
+        /// Stored per auth profile so several local instances (MPPM virtual players, -sjprofile) stay distinct.
+        /// </summary>
+        public static string OfflinePlayerId
+        {
+            get
+            {
+                var key = KOfflineId + ResolveAuthProfile();
+                var id = PlayerPrefs.GetString(key, "");
+                if (string.IsNullOrEmpty(id))
+                {
+                    id = "local-" + Guid.NewGuid().ToString("N").Substring(0, 16);
+                    PlayerPrefs.SetString(key, id);
+                    PlayerPrefs.Save();
+                }
+                return id;
+            }
+        }
 
         static void Save()
         {

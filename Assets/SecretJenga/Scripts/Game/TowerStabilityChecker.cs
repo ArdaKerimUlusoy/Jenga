@@ -4,9 +4,10 @@ using UnityEngine;
 namespace SecretJenga.Game
 {
     /// <summary>
-    /// Server-side tower monitor. Every physics step it measures how much the tower is moving (wobble) and detects
-    /// fallen blocks (lying on the table, flung away or tipped over). A fallen block ends the match as a team loss.
-    /// The block currently being manipulated (or the one touched this turn) is excluded from the collapse test.
+    /// Host-side tower monitor. Every physics step it measures how much the tower is moving (wobble) and detects
+    /// fallen blocks (lying on the table, flung away or tipped over). A fallen block ends the round as a group loss -
+    /// the collapse itself is pure physics, this only notices it. The block being manipulated is excluded.
+    /// Exception: Second Chance may catch the block placed this turn if it is the only one that fell.
     /// </summary>
     public class TowerStabilityChecker : NetworkBehaviour
     {
@@ -51,6 +52,7 @@ namespace SecretJenga.Game
             float maxSpeed = 0f;
             int fallen = 0;
             Vector3 fallenAt = Vector3.zero;
+            JengaBlock fallenBlock = null;
 
             foreach (var b in JengaBlock.All.Values)
             {
@@ -63,6 +65,7 @@ namespace SecretJenga.Game
                 {
                     fallen++;
                     fallenAt = b.transform.position;
+                    fallenBlock = b;
                 }
             }
 
@@ -83,10 +86,15 @@ namespace SecretJenga.Game
 
             if (_collapseTimer >= 0.25f)
             {
+                if (fallen == 1 && fallenBlock == _game.Turns.LastPlacedBlock && _game.Turns.ServerTryRecoverPlacedBlock())
+                {
+                    _collapseTimer = 0f;
+                    return;
+                }
                 _collapseReported = true;
-                string who = _game.PlayerName(_game.Turns.ActiveClientId.Value);
+                ulong culprit = _game.Turns.ActiveClientId.Value;
                 CollapseClientRpc(fallenAt, fallen);
-                _game.ServerEndGame(false, $"The tower collapsed during {who}'s turn!");
+                _game.ServerOnTowerCollapsed(culprit);
             }
         }
 
@@ -105,6 +113,7 @@ namespace SecretJenga.Game
         {
             AudioManager.Instance?.PlayCollapse();
             EffectsManager.Instance?.Collapse(at, count);
+            AtmosphereDirector.Instance?.OnCollapse();
         }
     }
 }

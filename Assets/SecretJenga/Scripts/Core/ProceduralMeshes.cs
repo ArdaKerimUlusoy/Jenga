@@ -242,7 +242,7 @@ namespace SecretJenga
 
         public static Mesh Apron(float length) => BeveledBox(new Vector3(length, 0.9f, 0.18f), 0.04f, false, new Vector2(4f, 4f), "SJ_Apron");
 
-        public static Mesh LampShade()
+        public static Mesh LampShade()  // legacy (Secret Jenga)
         {
             var p = new[] { new Vector2(1.6f, -0.9f), new Vector2(1.62f, -0.85f), new Vector2(1.2f, -0.35f), new Vector2(0.45f, 0.1f), new Vector2(0.18f, 0.3f), new Vector2(0.18f, 0.5f) };
             return Lathe(p, 40, false, true, "SJ_LampShade");
@@ -252,6 +252,105 @@ namespace SecretJenga
         {
             var p = new[] { new Vector2(0.0f, 0f), new Vector2(0.42f, 0f), new Vector2(0.46f, 0.05f), new Vector2(0.48f, 0.9f), new Vector2(0.5f, 0.98f), new Vector2(0.44f, 1.0f), new Vector2(0.42f, 0.2f), new Vector2(0.0f, 0.2f) };
             return Lathe(p, 28, false, false, "SJ_Mug");
+        }
+
+        // ------------------------------------------------------------------ Combining
+        /// <summary>Merges meshes (each with a local transform) into one single-submesh mesh.</summary>
+        public static Mesh Combine(string name, params (Mesh mesh, Matrix4x4 m)[] parts)
+        {
+            var ci = new CombineInstance[parts.Length];
+            for (int i = 0; i < parts.Length; i++) ci[i] = new CombineInstance { mesh = parts[i].mesh, transform = parts[i].m, subMeshIndex = 0 };
+            var mesh = new Mesh { name = name };
+            mesh.CombineMeshes(ci, true, true);
+            mesh.RecalculateBounds();
+            mesh.RecalculateTangents();
+            return mesh;
+        }
+
+        static Matrix4x4 TRS(Vector3 p, Vector3 euler) => Matrix4x4.TRS(p, Quaternion.Euler(euler), Vector3.one);
+
+        // ------------------------------------------------------------------ Placeholder hand (pivot = palm center, fingers along +Z)
+        public static Mesh Hand()
+        {
+            var palm = BeveledBox(new Vector3(1.1f, 0.34f, 1.05f), 0.12f, false, Vector2.one, "palm");
+            var finger = BeveledBox(new Vector3(0.24f, 0.22f, 0.9f), 0.08f, false, Vector2.one, "finger");
+            var thumb = BeveledBox(new Vector3(0.28f, 0.24f, 0.75f), 0.09f, false, Vector2.one, "thumb");
+            return Combine("TLB_Hand",
+                (palm, Matrix4x4.identity),
+                (finger, TRS(new Vector3(-0.39f, -0.04f, 0.92f), new Vector3(14f, 0f, 0f))),
+                (finger, TRS(new Vector3(-0.13f, -0.03f, 0.98f), new Vector3(10f, 0f, 0f))),
+                (finger, TRS(new Vector3(0.13f, -0.03f, 0.96f), new Vector3(12f, 0f, 0f))),
+                (finger, TRS(new Vector3(0.39f, -0.05f, 0.85f), new Vector3(18f, 0f, 0f))),
+                (thumb, TRS(new Vector3(-0.66f, -0.06f, 0.2f), new Vector3(10f, -38f, 0f))));
+        }
+
+        // ------------------------------------------------------------------ Room pieces (THE LAST BLOCK)
+        /// <summary>Solid cylinder centered on its pivot.</summary>
+        public static Mesh Cylinder(float radius, float height, int segments, string name = "Cylinder")
+        {
+            float h = height * 0.5f;
+            return Lathe(new[] { new Vector2(radius, -h), new Vector2(radius, h) }, segments, true, true, name, height / Mathf.Max(0.01f, radius * 6.283f));
+        }
+
+        /// <summary>Round table top with a softened edge. Top surface at y = 0.</summary>
+        public static Mesh RoundTableTop(float radius, float thickness)
+        {
+            var p = new[]
+            {
+                new Vector2(0f, -thickness), new Vector2(radius - 0.25f, -thickness), new Vector2(radius - 0.05f, -thickness + 0.08f),
+                new Vector2(radius, -thickness * 0.5f), new Vector2(radius - 0.05f, -0.06f), new Vector2(radius - 0.2f, 0f), new Vector2(0f, 0f)
+            };
+            var m = Lathe(p, 64, false, false, "TLB_TableTop", 1f);
+            // planar UVs on the top so wood grain runs straight across
+            var v = m.vertices;
+            var uv = m.uv;
+            for (int i = 0; i < v.Length; i++) uv[i] = new Vector2(v[i].x / 7f + 0.5f, v[i].z / 7f + 0.5f);
+            m.uv = uv;
+            m.RecalculateTangents();
+            return m;
+        }
+
+        /// <summary>Simple wooden chair, pivot on the floor under the seat center, facing +Z.</summary>
+        public static Mesh Chair()
+        {
+            var seat = BeveledBox(new Vector3(7.2f, 0.6f, 6.6f), 0.15f, false, new Vector2(4f, 4f), "seat");
+            var leg = BeveledBox(new Vector3(0.6f, 9f, 0.6f), 0.08f, false, new Vector2(2f, 4f), "leg");
+            var post = BeveledBox(new Vector3(0.6f, 9.5f, 0.6f), 0.08f, false, new Vector2(2f, 4f), "post");
+            var slat = BeveledBox(new Vector3(6.6f, 1.6f, 0.35f), 0.1f, false, new Vector2(4f, 4f), "slat");
+            return Combine("TLB_Chair",
+                (seat, TRS(new Vector3(0f, 9f, 0f), Vector3.zero)),
+                (leg, TRS(new Vector3(-3.1f, 4.5f, 2.8f), Vector3.zero)),
+                (leg, TRS(new Vector3(3.1f, 4.5f, 2.8f), Vector3.zero)),
+                (leg, TRS(new Vector3(-3.1f, 4.5f, -2.8f), new Vector3(0f, 0f, 1.5f))),
+                (leg, TRS(new Vector3(3.1f, 4.5f, -2.8f), new Vector3(0f, 0f, -1.5f))),
+                (post, TRS(new Vector3(-3.1f, 13.9f, -3.0f), new Vector3(-6f, 0f, 0f))),
+                (post, TRS(new Vector3(3.1f, 13.9f, -3.0f), new Vector3(-6f, 0f, 0f))),
+                (slat, TRS(new Vector3(0f, 17.2f, -3.35f), new Vector3(-6f, 0f, 0f))),
+                (slat, TRS(new Vector3(0f, 13.8f, -3.0f), new Vector3(-6f, 0f, 0f))));
+        }
+
+        /// <summary>Enamelled industrial lamp shade (wide cone), pivot at the top socket.</summary>
+        public static Mesh IndustrialShade()
+        {
+            var p = new[]
+            {
+                new Vector2(2.6f, -1.55f), new Vector2(2.68f, -1.5f), new Vector2(2.5f, -1.35f), new Vector2(1.4f, -0.55f),
+                new Vector2(0.55f, -0.15f), new Vector2(0.42f, 0.0f), new Vector2(0.42f, 0.55f), new Vector2(0.2f, 0.62f)
+            };
+            return Lathe(p, 48, false, true, "TLB_IndustrialShade");
+        }
+
+        /// <summary>Straight pipe along +X, length centered on the pivot.</summary>
+        public static Mesh Pipe(float radius, float length)
+        {
+            var m = Cylinder(radius, length, 16, "TLB_Pipe");
+            var v = m.vertices; var n = m.normals;
+            var r = Quaternion.Euler(0f, 0f, 90f);
+            for (int i = 0; i < v.Length; i++) { v[i] = r * v[i]; n[i] = r * n[i]; }
+            m.vertices = v; m.normals = n;
+            m.RecalculateBounds();
+            m.RecalculateTangents();
+            return m;
         }
     }
 }

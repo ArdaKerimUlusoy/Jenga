@@ -56,7 +56,7 @@ namespace SecretJenga.Networking
             Allocation allocation = await RelayService.Instance.CreateAllocationAsync(Mathf.Max(1, maxPlayers - 1));
             string joinCode = await RelayService.Instance.GetJoinCodeAsync(allocation.AllocationId);
             Transport.SetRelayServerData(AllocationUtils.ToRelayServerData(allocation, ConnectionType));
-            Debug.Log($"[SecretJenga] Relay allocation created. Region={allocation.Region} JoinCode={joinCode}");
+            Debug.Log($"[TheLastBlock] Relay allocation created. Region={allocation.Region} JoinCode={joinCode}");
             return joinCode;
         }
 
@@ -64,7 +64,7 @@ namespace SecretJenga.Networking
         {
             JoinAllocation allocation = await RelayService.Instance.JoinAllocationAsync(relayJoinCode);
             Transport.SetRelayServerData(AllocationUtils.ToRelayServerData(allocation, ConnectionType));
-            Debug.Log($"[SecretJenga] Joined relay allocation {allocation.AllocationId}");
+            Debug.Log($"[TheLastBlock] Joined relay allocation {allocation.AllocationId}");
         }
     }
 }

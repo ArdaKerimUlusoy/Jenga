@@ -4,15 +4,19 @@ using System.Text;
 using System.Threading.Tasks;
 using SecretJenga.Game;
 using Unity.Netcode;
+using Unity.Netcode.Transports.UTP;
 using Unity.Services.Lobbies.Models;
 using UnityEngine;
 
 namespace SecretJenga.Networking
 {
     /// <summary>
-    /// Orchestrates the whole online flow:
-    /// Create room  = sign in -> Relay allocation -> StartHost -> spawn session object -> create Lobby (stores relay code).
-    /// Join room    = sign in -> join Lobby (code / id / rejoin) -> read relay code -> join Relay -> StartClient (with approval payload).
+    /// Orchestrates the online flow. Host-client architecture: the host runs the authoritative simulation.
+    /// Two interchangeable connection modes (the rest of the game does not care which one is used):
+    ///  * Direct (IP)  = StartHost listening on a UDP port / StartClient to "address:port". Works on a LAN, on one PC,
+    ///                   or over the internet with port forwarding / a VPN. Needs no Unity services.
+    ///  * Online (Relay + Lobby) = sign in -> Relay allocation -> StartHost -> create Lobby (stores relay code);
+    ///                   join by room code. Requires the project to be linked to Unity Cloud with Relay + Lobby enabled.
     /// Also owns NGO connection approval and disconnect handling (host lost, rejected, transport failure).
     /// </summary>
     public class NetworkSessionManager : MonoBehaviour
@@ -36,6 +40,11 @@ namespace SecretJenga.Networking
         TaskCompletionSource<string> _connectWaiter;
         bool _hooked;
         bool _leaving;
+        bool _direct;
+        static bool _directRejoinAvailable;
+
+        /// <summary>True while connected through Direct (IP) mode.</summary>
+        public bool IsDirect => _direct;
 
         static NetworkManager NM => NetworkManager.Singleton;
 
@@ -74,13 +83,14 @@ namespace SecretJenga.Networking
         void PrepareNetworkManager()
         {
             Hook();
-            if (NM == null) throw new Exception("NetworkManager missing from the scene. Run Tools > Secret Jenga > Generate Project.");
+            if (NM == null) throw new Exception("NetworkManager missing from the scene. Run Tools > The Last Block > Generate Project.");
             if (NM.IsListening) NM.Shutdown();
             NM.NetworkConfig.ConnectionApproval = true;
             NM.NetworkConfig.EnableSceneManagement = false;
+            var svc = MultiplayerServiceManager.Instance;
             LocalPayload = new ConnectionPayload
             {
-                authId = MultiplayerServiceManager.Instance.PlayerId,
+                authId = svc != null && !string.IsNullOrEmpty(svc.PlayerId) ? svc.PlayerId : GameSettings.OfflinePlayerId,
                 playerName = GameSettings.PlayerName,
                 version = GameRules.BuildVersion,
                 colorPref = GameSettings.PreferredColor
@@ -89,9 +99,133 @@ namespace SecretJenga.Networking
             GameBootstrap.EnsureNetworkPrefabs();
         }
 
-        // ------------------------------------------------------------------ Create
+        static UnityTransport Transport => NM != null ? NM.GetComponent<UnityTransport>() : null;
+
+        // ------------------------------------------------------------------ Direct (IP)
+        /// <summary>Host a table on this machine (UDP port). Other players join with this PC's address.</summary>
+        public Task<bool> CreateDirectRoomAsync(RoomSettings settings)
+        {
+            if (State != SessionState.Offline) return Task.FromResult(false);
+            State = SessionState.Busy;
+            try
+            {
+                SetStatus("Opening the table...");
+                PrepareNetworkManager();
+                var t = Transport;
+                if (t == null) throw new Exception("UnityTransport not found on the NetworkManager.");
+                t.SetConnectionData(true, "127.0.0.1", settings.port, "0.0.0.0");
+                if (!NM.StartHost()) throw new Exception($"Could not start hosting on port {settings.port} (is it already in use?).");
+                _direct = true;
+
+                var go = SpawnSession(settings);
+                var ngm = go.GetComponent<NetworkGameManager>();
+                ngm.ServerSetRoomInfo(PrimaryLocalAddress() + ":" + settings.port, settings.roomName);
+
+                State = SessionState.InRoom;
+                SessionStarted?.Invoke();
+                return Task.FromResult(true);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError("[TheLastBlock] Direct host failed: " + e);
+                _direct = false;
+                if (NM != null && NM.IsListening) NM.Shutdown();
+                State = SessionState.Offline;
+                SessionEnded?.Invoke("Could not host.\n" + e.Message);
+                return Task.FromResult(false);
+            }
+        }
+
+        /// <summary>Join a table hosted in Direct (IP) mode.</summary>
+        public async Task<bool> JoinDirectAsync(string address, ushort port)
+        {
+            if (State != SessionState.Offline) return false;
+            address = (address ?? "").Trim();
+            if (address.Length == 0) { SessionEnded?.Invoke("Enter the host's IP address."); return false; }
+            State = SessionState.Busy;
+            try
+            {
+                SetStatus($"Connecting to {address}:{port}...");
+                PrepareNetworkManager();
+                var t = Transport;
+                if (t == null) throw new Exception("UnityTransport not found on the NetworkManager.");
+                t.SetConnectionData(true, address, port);
+                _connectWaiter = new TaskCompletionSource<string>();
+                if (!NM.StartClient()) throw new Exception("NetworkManager.StartClient failed.");
+                _direct = true;
+
+                var finished = await Task.WhenAny(_connectWaiter.Task, Task.Delay(12000));
+                if (finished != _connectWaiter.Task) throw new Exception("No answer from the host. Check the address, the port and the host's firewall.");
+                string err = _connectWaiter.Task.Result;
+                _connectWaiter = null;
+                if (err != null) throw new Exception(err);
+
+                GameSettings.LastDirectAddress = address;
+                GameSettings.DirectPort = port;
+                State = SessionState.InRoom;
+                SessionStarted?.Invoke();
+                return true;
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning("[TheLastBlock] Direct join failed: " + e.Message);
+                _connectWaiter = null;
+                _direct = false;
+                if (NM != null && NM.IsListening) NM.Shutdown();
+                State = SessionState.Offline;
+                SessionEnded?.Invoke("Could not join.\n" + e.Message);
+                return false;
+            }
+        }
+
+        /// <summary>Best guess at this PC's LAN IPv4 address (shown to the host so they can tell the others).</summary>
+        public static string PrimaryLocalAddress()
+        {
+            var all = LocalAddresses();
+            return all.Count > 0 ? all[0] : "127.0.0.1";
+        }
+
+        public static List<string> LocalAddresses()
+        {
+            var list = new List<string>();
+            try
+            {
+                foreach (var ni in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces())
+                {
+                    if (ni.OperationalStatus != System.Net.NetworkInformation.OperationalStatus.Up) continue;
+                    if (ni.NetworkInterfaceType == System.Net.NetworkInformation.NetworkInterfaceType.Loopback) continue;
+                    foreach (var ua in ni.GetIPProperties().UnicastAddresses)
+                        if (ua.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                        {
+                            var ip = ua.Address.ToString();
+                            if (!ip.StartsWith("169.254.") && !list.Contains(ip)) list.Add(ip);
+                        }
+                }
+            }
+            catch (Exception e) { Debug.LogWarning("[TheLastBlock] Could not read network interfaces: " + e.Message); }
+            // private LAN ranges first
+            list.Sort((a, b) => (IsPrivate(b) ? 1 : 0).CompareTo(IsPrivate(a) ? 1 : 0));
+            return list;
+        }
+
+        static bool IsPrivate(string ip) => ip.StartsWith("192.168.") || ip.StartsWith("10.") || (ip.StartsWith("172.") && int.TryParse(ip.Split('.')[1], out var b) && b >= 16 && b <= 31);
+
+        GameObject SpawnSession(RoomSettings settings)
+        {
+            var prefab = SecretJengaAssets.Instance.sessionPrefab;
+            if (prefab == null) throw new Exception("Session prefab missing. Run Tools > The Last Block > Generate Project.");
+            var go = Instantiate(prefab);
+            var ngm = go.GetComponent<NetworkGameManager>();
+            // spawn first: NetworkVariables may only be written once they know their NetworkBehaviour
+            go.GetComponent<NetworkObject>().Spawn();
+            ngm.ServerApplySettings(settings);
+            return go;
+        }
+
+        // ------------------------------------------------------------------ Create (Relay + Lobby)
         public async Task<bool> CreateRoomAsync(RoomSettings settings)
         {
+            if (settings.direct) return await CreateDirectRoomAsync(settings);
             if (State != SessionState.Offline) return false;
             State = SessionState.Busy;
             try
@@ -105,13 +239,10 @@ namespace SecretJenga.Networking
                 PrepareNetworkManager();
                 SetStatus("Starting host...");
                 if (!NM.StartHost()) throw new Exception("NetworkManager.StartHost failed.");
+                _direct = false;
 
-                var prefab = SecretJengaAssets.Instance.sessionPrefab;
-                if (prefab == null) throw new Exception("Session prefab missing. Run Tools > Secret Jenga > Generate Project.");
-                var go = Instantiate(prefab);
+                var go = SpawnSession(settings);
                 var ngm = go.GetComponent<NetworkGameManager>();
-                ngm.ServerApplySettings(settings);
-                go.GetComponent<NetworkObject>().Spawn();
 
                 SetStatus("Creating room...");
                 Lobby lobby = await LobbyManager.Instance.CreateLobbyAsync(settings, relayCode, GameSettings.PlayerName);
@@ -123,7 +254,7 @@ namespace SecretJenga.Networking
             }
             catch (Exception e)
             {
-                Debug.LogError("[SecretJenga] Create room failed: " + e);
+                Debug.LogError("[TheLastBlock] Create room failed: " + e);
                 await CleanupAsync(true);
                 State = SessionState.Offline;
                 SessionEnded?.Invoke("Could not create room.\n" + LobbyManager.Describe(e));
@@ -145,10 +276,11 @@ namespace SecretJenga.Networking
         public Task<bool> JoinByIdAsync(string lobbyId) =>
             JoinInternalAsync(() => LobbyManager.Instance.JoinByIdAsync(lobbyId, GameSettings.PlayerName));
 
-        public bool CanRejoin => !string.IsNullOrEmpty(GameSettings.LastLobbyId);
+        public bool CanRejoin => _directRejoinAvailable || !string.IsNullOrEmpty(GameSettings.LastLobbyId);
 
         public Task<bool> RejoinAsync()
         {
+            if (_directRejoinAvailable) return JoinDirectAsync(GameSettings.LastDirectAddress, GameSettings.DirectPort);
             var id = GameSettings.LastLobbyId;
             return JoinInternalAsync(async () =>
             {
@@ -184,14 +316,15 @@ namespace SecretJenga.Networking
                 _connectWaiter = null;
                 if (err != null) throw new Exception(err);
 
+                _direct = false;
                 State = SessionState.InRoom;
                 SessionStarted?.Invoke();
-                Debug.Log($"[SecretJenga] Joined room '{lobby.Name}' as client {NM.LocalClientId}");
+                Debug.Log($"[TheLastBlock] Joined room '{lobby.Name}' as client {NM.LocalClientId}");
                 return true;
             }
             catch (Exception e)
             {
-                Debug.LogWarning("[SecretJenga] Join failed: " + e.Message);
+                Debug.LogWarning("[TheLastBlock] Join failed: " + e.Message);
                 _connectWaiter = null;
                 await CleanupAsync(true);
                 State = SessionState.Offline;
@@ -210,6 +343,7 @@ namespace SecretJenga.Networking
             finally
             {
                 _leaving = false;
+                _direct = false;
                 State = SessionState.Offline;
                 SessionEnded?.Invoke(null);
             }
@@ -218,6 +352,7 @@ namespace SecretJenga.Networking
         async Task CleanupAsync(bool forgetLobby)
         {
             _pending.Clear();
+            if (forgetLobby) _directRejoinAvailable = false;
             if (NM != null && NM.IsListening) NM.Shutdown();
             if (LobbyManager.Instance != null)
             {
@@ -233,10 +368,13 @@ namespace SecretJenga.Networking
             _leaving = true;
             // Keep LastLobbyId when a match was running, so the player can use "Rejoin".
             bool keepForRejoin = NetworkGameManager.LastKnownPhase == GamePhase.Playing || NetworkGameManager.LastKnownPhase == GamePhase.Countdown;
+            bool wasDirect = _direct;
             try { await CleanupAsync(!keepForRejoin); }
             finally
             {
                 _leaving = false;
+                _direct = false;
+                if (keepForRejoin && wasDirect) _directRejoinAvailable = true;
                 State = SessionState.Offline;
                 SessionEnded?.Invoke(reason + (keepForRejoin ? "\nYou can try 'Rejoin Last Game' from the main menu." : ""));
             }
@@ -268,7 +406,7 @@ namespace SecretJenga.Networking
             {
                 response.Approved = false;
                 response.Reason = reason;
-                Debug.Log($"[SecretJenga] Rejected client {request.ClientNetworkId}: {reason}");
+                Debug.Log($"[TheLastBlock] Rejected client {request.ClientNetworkId}: {reason}");
                 return;
             }
 
@@ -316,7 +454,7 @@ namespace SecretJenga.Networking
 
         void OnTransportFailure()
         {
-            Debug.LogWarning("[SecretJenga] Transport failure.");
+            Debug.LogWarning("[TheLastBlock] Transport failure.");
             _connectWaiter?.TrySetResult("Network transport failure.");
             if (State == SessionState.InRoom) HandleSessionLost("Network connection failed.");
         }

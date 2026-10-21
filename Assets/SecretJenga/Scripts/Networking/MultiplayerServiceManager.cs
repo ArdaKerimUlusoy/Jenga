@@ -57,12 +57,12 @@ namespace SecretJenga.Networking
                 if (!AuthenticationService.Instance.IsSignedIn)
                     await AuthenticationService.Instance.SignInAnonymouslyAsync();
 
-                Debug.Log($"[SecretJenga] Signed in. Profile='{Profile}' PlayerId={AuthenticationService.Instance.PlayerId}");
+                Debug.Log($"[TheLastBlock] Signed in. Profile='{Profile}' PlayerId={AuthenticationService.Instance.PlayerId}");
             }
             catch (Exception e)
             {
                 LastError = Describe(e);
-                Debug.LogError("[SecretJenga] UGS sign-in failed: " + e);
+                Debug.LogWarning("[TheLastBlock] Unity services sign-in failed (Online/Relay mode unavailable, Direct IP still works): " + e.Message);
                 throw new Exception(LastError, e);
             }
         }

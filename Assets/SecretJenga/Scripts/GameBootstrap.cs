@@ -6,7 +6,7 @@ namespace SecretJenga
 {
     /// <summary>
     /// Scene entry point. Applies physics/time settings tuned for stable stacking, makes sure the network prefabs
-    /// are registered on the NetworkManager and starts Unity Services sign-in in the background.
+    /// are registered on the NetworkManager and starts Unity Services sign-in in the background (only needed for Online mode).
     /// </summary>
     [DefaultExecutionOrder(-1000)]
     public class GameBootstrap : MonoBehaviour
@@ -39,8 +39,10 @@ namespace SecretJenga
         async void Start()
         {
             if (MultiplayerServiceManager.Instance == null) return;
+            // Not linked to Unity Cloud: Online (Relay) mode is unavailable, Direct (IP) mode works without services.
+            if (string.IsNullOrEmpty(Application.cloudProjectId)) return;
             try { await MultiplayerServiceManager.Instance.EnsureSignedInAsync(); }
-            catch (System.Exception e) { Debug.LogWarning("[SecretJenga] Background sign-in failed (will retry when you go online): " + e.Message); }
+            catch (System.Exception e) { Debug.LogWarning("[TheLastBlock] Background sign-in failed (Online mode will retry; Direct IP mode does not need it): " + e.Message); }
         }
 
         /// <summary>Registers the block/session prefabs at runtime if they are not in the NetworkManager's prefab lists.</summary>
