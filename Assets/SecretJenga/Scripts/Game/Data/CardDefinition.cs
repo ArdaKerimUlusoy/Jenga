@@ -32,6 +32,10 @@ namespace SecretJenga.Game
         [Tooltip("Extra time granted once if the turn would time out before the block is out (fraction of the turn time).")]
         [Range(0.2f, 1f)] public float extraTimeFraction = 0.5f;
 
+        public string Title => L.CardTitle(this);
+        public string Description => L.CardDescription(this);
+        public string Duration => L.CardDuration(this);
+
         static CardDefinition Make(string id, string title, CardKind kind, CardTiming timing, CardTarget target, string duration, string desc)
         {
             var d = CreateInstance<CardDefinition>();

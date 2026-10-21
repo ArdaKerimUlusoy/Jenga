@@ -18,8 +18,9 @@ namespace SecretJenga.UI
         readonly List<SlotRefs> _slots = new List<SlotRefs>();
         readonly List<Image> _swatches = new List<Image>();
         Text _lobbyRoomName, _lobbyCode, _lobbyCodeLabel, _lobbyCount, _lobbyStatus, _lobbyRules, _lobbyAddresses;
-        UIFactory.StepperRef _lRequired, _lStart, _lTurn;
-        Button _readyButton, _startButton;
+        UIFactory.StepperRef _lStart, _lTurn, _lRounds;
+        Button _readyButton, _startButton, _addBotButton, _removeBotButton;
+        RectTransform _botRow;
         bool _settingStepper;
 
         static readonly string[] Numerals = { "I.", "II.", "III.", "IV.", "V.", "VI." };
@@ -30,11 +31,11 @@ namespace SecretJenga.UI
 
             // ---------------- left sheet: the seating list
             var left = CenterCard(g, "Seating", new Vector2(780, 900), new Vector2(-420, 0));
-            UIFactory.Caption(left, "seating, tonight");
+            UIFactory.Caption(left, L.T("seating, tonight", "bu geceki oturma düzeni"));
             var head = UIFactory.Rect("Head", left);
             UIFactory.LE(head, 70);
             UIFactory.HLayout(head, 10, 0, TextAnchor.MiddleLeft, false);
-            UIFactory.LE(UIFactory.Write(head, FontKind.Title, "At the Table", 56, Ink.Black, TextAnchor.MiddleLeft), -1, -1, 1);
+            UIFactory.LE(UIFactory.Write(head, FontKind.Title, L.T("At the Table", "Masada"), 56, Ink.Black, TextAnchor.MiddleLeft), -1, -1, 1);
             _lobbyCount = UIFactory.Write(head, FontKind.Type, "1 / 5", 30, Ink.Red, TextAnchor.MiddleRight);
             UIFactory.LE(_lobbyCount, -1, 120);
             UIFactory.Divider(left);
@@ -42,7 +43,11 @@ namespace SecretJenga.UI
             for (int i = 0; i < GameRules.MaxPlayers; i++) _slots.Add(BuildSlot(left, i));
 
             UIFactory.LE(UIFactory.Rect("Push", left), -1, -1, -1, 1);
-            UIFactory.Caption(left, "your ink");
+            // host: seat bots so the game can be tried alone (or a table filled up)
+            _botRow = UIFactory.ButtonRow(left, 62, 24);
+            _addBotButton = UIFactory.Button(_botRow, L.T("+ seat a bot", "+ bot oturt"), () => { if (_game != null) _game.AddBotServerRpc(); }, ButtonStyle.Secondary, 26);
+            _removeBotButton = UIFactory.Button(_botRow, L.T("- send a bot away", "- botu kaldır"), () => { if (_game != null) _game.RemoveBotServerRpc(); }, ButtonStyle.Ghost, 26);
+            UIFactory.Caption(left, L.T("your ink", "mürekkebin"));
             var sw = UIFactory.Rect("Swatches", left);
             UIFactory.LE(sw, 70);
             UIFactory.HLayout(sw, 22, 0, TextAnchor.MiddleLeft, false);
@@ -58,7 +63,7 @@ namespace SecretJenga.UI
 
             // ---------------- right sheet: the room
             var right = CenterCard(g, "Room", new Vector2(780, 900), new Vector2(420, 0));
-            UIFactory.Caption(right, "the room");
+            UIFactory.Caption(right, L.T("the room", "oda"));
             _lobbyRoomName = UIFactory.Write(right, FontKind.Title, "Table", 48, Ink.Black, TextAnchor.MiddleLeft);
             _lobbyRoomName.horizontalOverflow = HorizontalWrapMode.Overflow;
             UIFactory.LE(_lobbyRoomName, 62);
@@ -69,11 +74,11 @@ namespace SecretJenga.UI
             var codeCol = UIFactory.Rect("CodeCol", codeRow);
             UIFactory.LE(codeCol, -1, -1, 1);
             UIFactory.VLayout(codeCol, 0, 0, TextAnchor.MiddleLeft);
-            _lobbyCodeLabel = UIFactory.Caption(codeCol, "room code");
+            _lobbyCodeLabel = UIFactory.Caption(codeCol, L.T("room code", "oda kodu"));
             _lobbyCode = UIFactory.Write(codeCol, FontKind.Type, "------", 48, Ink.Red, TextAnchor.MiddleLeft);
             _lobbyCode.horizontalOverflow = HorizontalWrapMode.Overflow;
             UIFactory.LE(_lobbyCode, 62);
-            UIFactory.Button(codeRow, "copy", CopyCode, ButtonStyle.Secondary, 28);
+            UIFactory.Button(codeRow, L.T("copy", "kopyala"), CopyCode, ButtonStyle.Secondary, 28);
             _lobbyAddresses = UIFactory.Write(right, FontKind.Body, "", 20, Ink.Faded, TextAnchor.UpperLeft, FontStyle.Italic);
             UIFactory.LE(_lobbyAddresses, 52);
             UIFactory.Divider(right);
@@ -81,23 +86,23 @@ namespace SecretJenga.UI
             var hs = UIFactory.Rect("HostSettings", right);
             UIFactory.VLayout(hs, 2, 0);
             UIFactory.LE(hs, 156);
-            _lRequired = UIFactory.Stepper(hs, "Turns the tower must survive", GameRules.MinRequiredTurns, GameRules.MaxRequiredTurns, GameRules.DefaultRequiredTurns, 1, v => v.ToString(), _ => PushSettings());
-            _lStart = UIFactory.Stepper(hs, "Floors at the start", GameRules.MinStartLayers, GameRules.MaxStartLayers, GameRules.DefaultStartLayers, 1, v => v.ToString(), _ => PushSettings());
-            _lTurn = UIFactory.Stepper(hs, "Time for each turn", 0, GameRules.MaxTurnSeconds, GameRules.DefaultTurnSeconds, 20, FormatTimer, _ => PushSettings());
+            _lRounds = UIFactory.Stepper(hs, L.T("Rounds in a match", "Maçtaki el sayısı"), GameRules.MinMatchRounds, GameRules.MaxMatchRounds, GameRules.DefaultMatchRounds, 1, v => v.ToString(), _ => PushSettings());
+            _lStart = UIFactory.Stepper(hs, L.T("Floors at the start", "Başlangıç kat sayısı"), GameRules.MinStartLayers, GameRules.MaxStartLayers, GameRules.DefaultStartLayers, 1, v => v.ToString(), _ => PushSettings());
+            _lTurn = UIFactory.Stepper(hs, L.T("Time for each turn", "Tur başına süre"), 0, GameRules.MaxTurnSeconds, GameRules.DefaultTurnSeconds, 20, FormatTimer, _ => PushSettings());
             UIFactory.Divider(right);
 
             _lobbyRules = UIFactory.Write(right, FontKind.Body, "", 23, Ink.Black, TextAnchor.UpperLeft);
-            UIFactory.LE(_lobbyRules, 150);
+            UIFactory.LE(_lobbyRules, 200);
 
             UIFactory.LE(UIFactory.Rect("Push", right), -1, -1, -1, 1);
             _lobbyStatus = UIFactory.Write(right, FontKind.Type, "", 21, Ink.Red, TextAnchor.MiddleLeft);
             UIFactory.LE(_lobbyStatus, 34);
 
             var row = UIFactory.ButtonRow(right, 72, 40);
-            UIFactory.Button(row, "leave", LeaveRoom, ButtonStyle.Ghost, 30);
+            UIFactory.Button(row, L.T("leave", "ayrıl"), LeaveRoom, ButtonStyle.Ghost, 30);
             UIFactory.LE(UIFactory.Rect("Push", row), -1, -1, 1);
-            _readyButton = UIFactory.Button(row, "I am ready", ToggleReady, ButtonStyle.Primary, 40);
-            _startButton = UIFactory.Button(row, "Begin", StartGame, ButtonStyle.Primary, 44);
+            _readyButton = UIFactory.Button(row, L.T("I am ready", "Hazırım"), ToggleReady, ButtonStyle.Primary, 40);
+            _startButton = UIFactory.Button(row, L.T("Begin", "Başla"), StartGame, ButtonStyle.Primary, 44);
             UIFactory.OnPaper = false;
         }
 
@@ -134,7 +139,7 @@ namespace SecretJenga.UI
             UIFactory.Place(s.Strike.rectTransform, new Vector2(0, 0.5f), new Vector2(0, 0.5f), new Vector2(70, 2), new Vector2(330, 10));
             s.Filled = filled.gameObject;
 
-            var empty = UIFactory.Write(root, FontKind.Body, "an empty chair", 26, Ink.Pencil, TextAnchor.MiddleLeft, FontStyle.Italic);
+            var empty = UIFactory.Write(root, FontKind.Body, L.T("an empty chair", "boş sandalye"), 26, Ink.Pencil, TextAnchor.MiddleLeft, FontStyle.Italic);
             UIFactory.Stretch(empty.rectTransform, 76, 0, 0, 0);
             s.Empty = empty.gameObject;
             return s;
@@ -151,15 +156,16 @@ namespace SecretJenga.UI
             _lobbyRoomName.text = game.RoomName.Value.ToString();
             var code = game.RoomCode.Value.ToString();
             bool direct = game.IsDirectSession.Value;
-            _lobbyCodeLabel.text = direct ? "address of this table - give it to the others" : "room code";
+            _lobbyCodeLabel.text = direct ? L.T("address of this table - give it to the others", "bu masanın adresi - diğerlerine ver") : L.T("room code", "oda kodu");
             _lobbyCode.text = string.IsNullOrEmpty(code) ? "......" : code;
             if (direct && game.IsServer)
             {
                 var all = NetworkSessionManager.LocalAddresses();
-                _lobbyAddresses.text = (all.Count > 1 ? "also: " + string.Join("   ", all.GetRange(1, all.Count - 1)) + "\n" : "") +
-                                       "same PC: 127.0.0.1  -  over the internet, forward UDP " + GameSettings.DirectPort + " to this PC.";
+                _lobbyAddresses.text = (all.Count > 1 ? L.T("also: ", "ayrıca: ") + string.Join("   ", all.GetRange(1, all.Count - 1)) + "\n" : "") +
+                                       L.T("same PC: 127.0.0.1  -  over the internet, forward UDP " + GameSettings.DirectPort + " to this PC.",
+                                           "aynı PC: 127.0.0.1  -  internetten: UDP " + GameSettings.DirectPort + " portunu bu PC'ye yönlendir.");
             }
-            else _lobbyAddresses.text = direct ? "You sat down at the host's table directly." : "Friends sit down with this code: Join a table > Online.";
+            else _lobbyAddresses.text = direct ? L.T("You sat down at the host's table directly.", "Kurucunun masasına doğrudan oturdun.") : L.T("Friends sit down with this code: Join a table > Online.", "Arkadaşların bu kodla oturur: Masaya katıl > Çevrimiçi.");
 
             ulong me = game.NetworkManager.LocalClientId;
             var used = new HashSet<int>();
@@ -176,17 +182,20 @@ namespace SecretJenga.UI
                 used.Add(p.ColorIndex);
                 s.Mark.color = InkOf(p.Color);
                 var n = p.Name.ToString();
-                s.MarkLetter.text = n.Length > 0 ? n.Substring(0, 1).ToUpperInvariant() : "?";
+                s.MarkLetter.text = n.Length > 0 ? L.Upper(n.Substring(0, 1)) : "?";
                 s.Name.text = n;
-                var tags = new List<string> { "chair " + (p.SeatIndex + 1) };
-                if (p.IsHost) tags.Add("host");
-                if (p.ClientId == me) tags.Add("you");
+                var tags = new List<string> { L.T("chair ", "sandalye ") + (p.SeatIndex + 1) };
+                if (p.IsHost) tags.Add(L.T("host", "kurucu"));
+                if (p.IsBot) tags.Add("bot");
+                if (p.ClientId == me) tags.Add(L.T("you", "sen"));
+                if (game.RoundNumber.Value > 0) tags.Add(L.T($"{p.Score} pts", $"{p.Score} puan"));
                 s.Tags.text = string.Join("  /  ", tags);
                 s.Strike.gameObject.SetActive(!p.IsConnected);
-                if (!p.IsConnected) { s.Status.text = "left"; s.Status.color = Ink.Faded; }
-                else if (p.IsHost) { s.Status.text = "host"; s.Status.color = Ink.Faded; }
-                else if (p.IsReady) { s.Status.text = "ready"; s.Status.color = Ink.Green; }
-                else { s.Status.text = "not yet"; s.Status.color = Ink.Red; }
+                if (!p.IsConnected) { s.Status.text = L.T("left", "ayrıldı"); s.Status.color = Ink.Faded; }
+                else if (p.IsHost) { s.Status.text = L.T("host", "kurucu"); s.Status.color = Ink.Faded; }
+                else if (p.IsBot) { s.Status.text = L.T("bot", "bot"); s.Status.color = Ink.Green; }
+                else if (p.IsReady) { s.Status.text = L.T("ready", "hazır"); s.Status.color = Ink.Green; }
+                else { s.Status.text = L.T("not yet", "henüz değil"); s.Status.color = Ink.Red; }
             }
 
             var mine = game.LocalPlayer;
@@ -201,17 +210,27 @@ namespace SecretJenga.UI
 
             bool host = game.IsServer;
             _settingStepper = true;
-            _lRequired.Set(game.RequiredTurns.Value, false);
             _lStart.Set(game.StartLayers.Value, false);
             _lTurn.Set(game.TurnSeconds.Value, false);
-            _lRequired.Interactable = host;
+            _lRounds.Set(game.MatchRounds.Value, false);
+            _lRounds.Interactable = host;
             _lStart.Interactable = host;
             _lTurn.Interactable = host;
             _settingStepper = false;
 
-            string timer = game.TurnSeconds.Value > 0 ? $"You have {game.TurnSeconds.Value} seconds a turn." : "Nobody is timed.";
-            _lobbyRules.text = $"Together, keep the tower standing for <color=#99261A>{game.RequiredTurns.Value}</color> turns. " +
-                               $"Each turn, pull one block and lay it on top. Each of you is dealt a <i>secret task</i> and one <i>card</i>. {timer}";
+            string timer = game.TurnSeconds.Value > 0
+                ? L.T($"You have {game.TurnSeconds.Value} seconds a turn.", $"Her tur için {game.TurnSeconds.Value} saniyen var.")
+                : L.T("Nobody is timed.", "Süre sınırı yok.");
+            _lobbyRules.text = L.T(
+                $"Pull one block, lay it on top; a round lasts until the tower falls. <color=#99261A>Whoever drops it: -3</color>, everyone else +3. Your <i>secret task</i> adds +1..+4. {game.MatchRounds.Value} round(s) - the highest total wins the match. {timer}",
+                $"Bir blok çek, en üste koy; el, kule yıkılana kadar sürer. <color=#99261A>Kuleyi yıkan -3</color>, diğer herkes +3. <i>Gizli görevin</i> +1..+4 ekler. {game.MatchRounds.Value} el - en yüksek toplam maçı kazanır. {timer}");
+
+            _botRow.gameObject.SetActive(host);
+            if (host)
+            {
+                _addBotButton.interactable = game.ConnectedCount < max && players.Count < SeatLayout.SeatCount;
+                _removeBotButton.interactable = game.BotCount > 0;
+            }
 
             _startButton.gameObject.SetActive(host);
             _readyButton.gameObject.SetActive(!host);
@@ -219,13 +238,13 @@ namespace SecretJenga.UI
             {
                 bool ok = game.CanStart(out var reason);
                 _startButton.interactable = ok;
-                _lobbyStatus.text = ok ? (game.ConnectedCount < 2 ? "solo test - you will play alone." : "everyone is ready.") : reason;
+                _lobbyStatus.text = ok ? (game.ConnectedCount < 2 ? L.T("solo test - you will play alone.", "tek kişilik test - yalnız oynayacaksın.") : L.T("everyone is ready.", "herkes hazır.")) : L.Resolve(reason);
             }
             else
             {
                 bool ready = mine.HasValue && mine.Value.IsReady;
-                UIFactory.SetLabel(_readyButton, ready ? "wait, not yet" : "I am ready");
-                _lobbyStatus.text = ready ? "waiting for the host to begin..." : "say when you are ready.";
+                UIFactory.SetLabel(_readyButton, ready ? L.T("wait, not yet", "dur, henüz değil") : L.T("I am ready", "Hazırım"));
+                _lobbyStatus.text = ready ? L.T("waiting for the host to begin...", "kurucunun başlatması bekleniyor...") : L.T("say when you are ready.", "hazır olunca söyle.");
             }
         }
 
@@ -234,7 +253,7 @@ namespace SecretJenga.UI
         void PushSettings()
         {
             if (_settingStepper || _game == null || !_game.IsServer) return;
-            _game.UpdateSettingsServerRpc(_lRequired.Value, _lStart.Value, _lTurn.Value);
+            _game.UpdateSettingsServerRpc(_lStart.Value, _lTurn.Value, _lRounds.Value);
         }
 
         void PickColor(int idx)
@@ -261,7 +280,7 @@ namespace SecretJenga.UI
         {
             if (_game == null) return;
             GUIUtility.systemCopyBuffer = _game.RoomCode.Value.ToString();
-            Toast(_game.IsDirectSession.Value ? "Address copied." : "Code copied.", Palette.Good);
+            Toast(_game.IsDirectSession.Value ? L.T("Address copied.", "Adres kopyalandı.") : L.T("Code copied.", "Kod kopyalandı."), Palette.Good);
             UITween.Pop(_lobbyCode.transform, 1.15f);
         }
     }

@@ -7,7 +7,7 @@ namespace SecretJenga.Game
     public enum AtmosphereEvent : byte { Flicker = 0, DistantMetal = 1, DeepGroan = 2 }
 
     /// <summary>
-    /// Host-side tension model. Tension (0..1) rises with group progress, tower height and wobble and is replicated
+    /// Host-side tension model. Tension (0..1) rises with turns played, tower height and wobble and is replicated
     /// at a low rate. The host also schedules sparse atmosphere events (lamp flicker bursts, distant metallic noises)
     /// and broadcasts them with a seed, so every client plays the identical effect at the same moment.
     /// The local AtmosphereDirector turns these into light, sound and post-processing.
@@ -41,13 +41,14 @@ namespace SecretJenga.Game
             float target = 0.08f;
             if (phase == GamePhase.Playing || phase == GamePhase.Countdown)
             {
-                float progress = _game.RequiredTurns.Value > 0 ? (float)_game.Turns.MovesCompleted.Value / _game.RequiredTurns.Value : 0f;
-                float height = Mathf.Clamp01((_game.Tower.LayerCount.Value - _game.StartLayers.Value) / Mathf.Max(3f, _game.RequiredTurns.Value / 3f + 1f));
+                // no turn limit any more: tension creeps up with every turn survived and every layer added
+                float progress = 1f - Mathf.Exp(-_game.Turns.MovesCompleted.Value / 14f);
+                float height = Mathf.Clamp01((_game.Tower.LayerCount.Value - _game.StartLayers.Value) / 8f);
                 float wobble = _game.Stability.Wobble.Value;
                 bool handling = _game.Turns.Stage.Value == TurnStage.Dragging || _game.Turns.Stage.Value == TurnStage.Carrying;
                 target = Mathf.Clamp01(0.12f + 0.42f * progress + 0.18f * height + 0.55f * wobble + (handling ? 0.06f : 0f));
             }
-            else if (phase == GamePhase.GameOver) target = _game.TeamWon.Value ? 0.05f : 0.3f;
+            else if (phase == GamePhase.GameOver) target = 0.2f;
 
             float dt = Time.deltaTime;
             _smoothed = Mathf.MoveTowards(_smoothed, target, dt * (target > _smoothed ? 0.6f : 0.15f));

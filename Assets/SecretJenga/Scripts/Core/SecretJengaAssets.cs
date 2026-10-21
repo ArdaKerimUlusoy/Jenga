@@ -30,7 +30,10 @@ namespace SecretJenga
         public Material cursorMaterial;
         public Material dustMaterial;
 
-        [Header("Characters (placeholders)")]
+        [Header("Characters")]
+        [Tooltip("Rigged saloon patron (Quaternius UAL mannequin, CC0) with cowboy hat. Optional - falls back to the procedural bodies.")]
+        public GameObject cowboyModel;
+        public RuntimeAnimatorController cowboyAnimator;
         public Material skinMaterial;
         public Material clothMaterial;
         public Material hoodMaterial;
@@ -135,8 +138,8 @@ namespace SecretJenga
             return -1;
         }
 
-        public static string TaskTitle(Networking.TaskInfo t) => Task(t.DefinitionIndex)?.title ?? "No task";
-        public static string CardTitle(Networking.CardInfo c) => c.Kind == CardKind.None ? "No card" : (Card(c.DefinitionIndex)?.title ?? c.Kind.ToString());
+        public static string TaskTitle(Networking.TaskInfo t) => Task(t.DefinitionIndex)?.Title ?? L.T("No task", "Görev yok");
+        public static string CardTitle(Networking.CardInfo c) => c.Kind == CardKind.None ? L.T("No card", "Kart yok") : (Card(c.DefinitionIndex)?.Title ?? c.Kind.ToString());
 
         /// <summary>Clears the cache (the registry can change in the editor between play sessions).</summary>
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]

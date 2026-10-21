@@ -109,7 +109,7 @@ namespace SecretJenga.Networking
             State = SessionState.Busy;
             try
             {
-                SetStatus("Opening the table...");
+                SetStatus(L.T("Opening the table...", "Masa açılıyor..."));
                 PrepareNetworkManager();
                 var t = Transport;
                 if (t == null) throw new Exception("UnityTransport not found on the NetworkManager.");
@@ -131,7 +131,7 @@ namespace SecretJenga.Networking
                 _direct = false;
                 if (NM != null && NM.IsListening) NM.Shutdown();
                 State = SessionState.Offline;
-                SessionEnded?.Invoke("Could not host.\n" + e.Message);
+                SessionEnded?.Invoke(L.T("Could not host.\n", "Masa kurulamadı.\n") + e.Message);
                 return Task.FromResult(false);
             }
         }
@@ -141,11 +141,11 @@ namespace SecretJenga.Networking
         {
             if (State != SessionState.Offline) return false;
             address = (address ?? "").Trim();
-            if (address.Length == 0) { SessionEnded?.Invoke("Enter the host's IP address."); return false; }
+            if (address.Length == 0) { SessionEnded?.Invoke(L.T("Enter the host's IP address.", "Kurucunun IP adresini yaz.")); return false; }
             State = SessionState.Busy;
             try
             {
-                SetStatus($"Connecting to {address}:{port}...");
+                SetStatus(L.T($"Connecting to {address}:{port}...", $"{address}:{port} adresine bağlanılıyor..."));
                 PrepareNetworkManager();
                 var t = Transport;
                 if (t == null) throw new Exception("UnityTransport not found on the NetworkManager.");
@@ -155,7 +155,7 @@ namespace SecretJenga.Networking
                 _direct = true;
 
                 var finished = await Task.WhenAny(_connectWaiter.Task, Task.Delay(12000));
-                if (finished != _connectWaiter.Task) throw new Exception("No answer from the host. Check the address, the port and the host's firewall.");
+                if (finished != _connectWaiter.Task) throw new Exception(L.T("No answer from the host. Check the address, the port and the host's firewall.", "Kurucudan cevap yok. Adresi, portu ve kurucunun güvenlik duvarını kontrol et."));
                 string err = _connectWaiter.Task.Result;
                 _connectWaiter = null;
                 if (err != null) throw new Exception(err);
@@ -173,7 +173,7 @@ namespace SecretJenga.Networking
                 _direct = false;
                 if (NM != null && NM.IsListening) NM.Shutdown();
                 State = SessionState.Offline;
-                SessionEnded?.Invoke("Could not join.\n" + e.Message);
+                SessionEnded?.Invoke(L.T("Could not join.\n", "Katılınamadı.\n") + e.Message);
                 return false;
             }
         }
@@ -230,21 +230,21 @@ namespace SecretJenga.Networking
             State = SessionState.Busy;
             try
             {
-                SetStatus("Signing in...");
+                SetStatus(L.T("Signing in...", "Giriş yapılıyor..."));
                 await MultiplayerServiceManager.Instance.EnsureSignedInAsync();
 
-                SetStatus("Allocating relay server...");
+                SetStatus(L.T("Allocating relay server...", "Relay sunucusu ayrılıyor..."));
                 string relayCode = await RelayConnectionManager.Instance.AllocateHostAsync(settings.maxPlayers);
 
                 PrepareNetworkManager();
-                SetStatus("Starting host...");
+                SetStatus(L.T("Starting host...", "Kurucu başlatılıyor..."));
                 if (!NM.StartHost()) throw new Exception("NetworkManager.StartHost failed.");
                 _direct = false;
 
                 var go = SpawnSession(settings);
                 var ngm = go.GetComponent<NetworkGameManager>();
 
-                SetStatus("Creating room...");
+                SetStatus(L.T("Creating room...", "Oda oluşturuluyor..."));
                 Lobby lobby = await LobbyManager.Instance.CreateLobbyAsync(settings, relayCode, GameSettings.PlayerName);
                 if (ngm != null) ngm.ServerSetRoomInfo(lobby.LobbyCode, lobby.Name);
 
@@ -257,7 +257,7 @@ namespace SecretJenga.Networking
                 Debug.LogError("[TheLastBlock] Create room failed: " + e);
                 await CleanupAsync(true);
                 State = SessionState.Offline;
-                SessionEnded?.Invoke("Could not create room.\n" + LobbyManager.Describe(e));
+                SessionEnded?.Invoke(L.T("Could not create room.\n", "Oda oluşturulamadı.\n") + LobbyManager.Describe(e));
                 return false;
             }
         }
@@ -267,7 +267,7 @@ namespace SecretJenga.Networking
         {
             if (string.IsNullOrWhiteSpace(code) || code.Trim().Length < 4)
             {
-                SessionEnded?.Invoke("Please enter a valid room code.");
+                SessionEnded?.Invoke(L.T("Please enter a valid room code.", "Geçerli bir oda kodu yaz."));
                 return Task.FromResult(false);
             }
             return JoinInternalAsync(() => LobbyManager.Instance.JoinByCodeAsync(code, GameSettings.PlayerName));
@@ -295,15 +295,15 @@ namespace SecretJenga.Networking
             State = SessionState.Busy;
             try
             {
-                SetStatus("Signing in...");
+                SetStatus(L.T("Signing in...", "Giriş yapılıyor..."));
                 await MultiplayerServiceManager.Instance.EnsureSignedInAsync();
 
-                SetStatus("Joining room...");
+                SetStatus(L.T("Joining room...", "Odaya katılınıyor..."));
                 Lobby lobby = await joinLobby();
                 string relayCode = LobbyManager.Instance.GetRelayCode();
                 if (string.IsNullOrEmpty(relayCode)) throw new Exception("This room has no relay code (host still starting?). Try again.");
 
-                SetStatus("Connecting to host...");
+                SetStatus(L.T("Connecting to host...", "Kurucuya bağlanılıyor..."));
                 await RelayConnectionManager.Instance.JoinAsync(relayCode);
 
                 PrepareNetworkManager();
@@ -311,7 +311,7 @@ namespace SecretJenga.Networking
                 if (!NM.StartClient()) throw new Exception("NetworkManager.StartClient failed.");
 
                 var finished = await Task.WhenAny(_connectWaiter.Task, Task.Delay(15000));
-                if (finished != _connectWaiter.Task) throw new Exception("Connection to the host timed out.");
+                if (finished != _connectWaiter.Task) throw new Exception(L.T("Connection to the host timed out.", "Kurucuya bağlantı zaman aşımına uğradı."));
                 string err = _connectWaiter.Task.Result;
                 _connectWaiter = null;
                 if (err != null) throw new Exception(err);
@@ -328,7 +328,7 @@ namespace SecretJenga.Networking
                 _connectWaiter = null;
                 await CleanupAsync(true);
                 State = SessionState.Offline;
-                SessionEnded?.Invoke("Could not join.\n" + LobbyManager.Describe(e));
+                SessionEnded?.Invoke(L.T("Could not join.\n", "Katılınamadı.\n") + LobbyManager.Describe(e));
                 return false;
             }
         }
@@ -398,7 +398,7 @@ namespace SecretJenga.Networking
 
             string reason = null;
             if (payload == null || string.IsNullOrEmpty(payload.authId)) reason = "Invalid connection data.";
-            else if (payload.version != GameRules.BuildVersion) reason = "Version mismatch between host and client builds.";
+            else if (payload.version != GameRules.BuildVersion) reason = "Version mismatch between host and client builds. / Kurucu ile oyuncunun sürümleri farklı.";
             else if (NetworkGameManager.Instance == null) reason = "Room is not ready yet. Try again in a moment.";
             else if (!NetworkGameManager.Instance.ServerCanAccept(payload, out reason)) { }
 
@@ -445,18 +445,18 @@ namespace SecretJenga.Networking
             string reason = NM.DisconnectReason;
             if (_connectWaiter != null && !_connectWaiter.Task.IsCompleted)
             {
-                _connectWaiter.TrySetResult(string.IsNullOrEmpty(reason) ? "The host refused or dropped the connection." : reason);
+                _connectWaiter.TrySetResult(string.IsNullOrEmpty(reason) ? L.T("The host refused or dropped the connection.", "Kurucu bağlantıyı reddetti ya da kesti.") : reason);
                 return;
             }
             if (State == SessionState.InRoom)
-                HandleSessionLost(string.IsNullOrEmpty(reason) ? "Connection to the host was lost (the host may have left)." : reason);
+                HandleSessionLost(string.IsNullOrEmpty(reason) ? L.T("Connection to the host was lost (the host may have left).", "Kurucuyla bağlantı koptu (kurucu çıkmış olabilir).") : reason);
         }
 
         void OnTransportFailure()
         {
             Debug.LogWarning("[TheLastBlock] Transport failure.");
-            _connectWaiter?.TrySetResult("Network transport failure.");
-            if (State == SessionState.InRoom) HandleSessionLost("Network connection failed.");
+            _connectWaiter?.TrySetResult(L.T("Network transport failure.", "Ağ aktarım hatası."));
+            if (State == SessionState.InRoom) HandleSessionLost(L.T("Network connection failed.", "Ağ bağlantısı başarısız."));
         }
 
         void OnApplicationQuit()

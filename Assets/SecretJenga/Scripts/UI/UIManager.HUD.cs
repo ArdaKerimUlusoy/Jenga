@@ -8,7 +8,8 @@ using UnityEngine.UI;
 namespace SecretJenga.UI
 {
     /// <summary>
-    /// In-round HUD. Nothing here is a box: survived turns are scratched as tally marks, the turn order is a typed
+    /// In-round HUD. Nothing here is a box: every good turn is scratched as a tally mark (there is no last turn -
+    /// the round lasts until the tower falls, and whoever drops it loses), the turn order is a typed
     /// slip taped to the corner, the tower's tremor is drawn by a seismograph needle, your special card is a real
     /// card lying at the bottom right and your secret task is a folded note you open by holding TAB.
     /// </summary>
@@ -61,7 +62,7 @@ namespace SecretJenga.UI
             UIFactory.Place(_hudNextLine.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0, -172), new Vector2(1200, 26));
             _hudTimer = UIFactory.Write(g.transform, FontKind.Type, "", 44, Ink.Bone, TextAnchor.MiddleRight);
             UIFactory.Place(_hudTimer.rectTransform, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-44, -30), new Vector2(240, 60));
-            var tl = UIFactory.Write(g.transform, FontKind.Type, "time", 16, Ink.BoneFaint, TextAnchor.MiddleRight);
+            var tl = UIFactory.Write(g.transform, FontKind.Type, L.T("time", "süre"), 16, Ink.BoneFaint, TextAnchor.MiddleRight);
             UIFactory.Place(tl.rectTransform, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-46, -88), new Vector2(240, 22));
             _hudEffects = UIFactory.Write(g.transform, FontKind.Type, "", 18, Ink.RedBright, TextAnchor.MiddleCenter);
             UIFactory.Place(_hudEffects.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0, -202), new Vector2(1200, 28));
@@ -70,7 +71,7 @@ namespace SecretJenga.UI
             var slip = UIFactory.PaperSheet(g.transform, "OrderSlip", new Vector2(0f, 1f), new Vector2(190, -150), new Vector2(330, 250), -2.2f, 1, 30, true);
             _orderSlip = slip.Root;
             slip.PaperImage.raycastTarget = false;
-            var head = UIFactory.Write(slip.Body, FontKind.Type, UIFactory.Spaced("order"), 16, Ink.Faded, TextAnchor.MiddleLeft);
+            var head = UIFactory.Write(slip.Body, FontKind.Type, UIFactory.Spaced(L.T("order", "sıra")), 16, Ink.Faded, TextAnchor.MiddleLeft);
             UIFactory.LE(head, 24);
             _orderList = UIFactory.Rect("Lines", slip.Body);
             UIFactory.VLayout(_orderList, 0, 0, TextAnchor.UpperLeft);
@@ -83,8 +84,8 @@ namespace SecretJenga.UI
             var seisHead = UIFactory.Rect("Head", seis.Body);
             UIFactory.LE(seisHead, 24);
             UIFactory.HLayout(seisHead, 6, 0, TextAnchor.MiddleLeft, false);
-            UIFactory.LE(UIFactory.Write(seisHead, FontKind.Type, UIFactory.Spaced("tremor"), 15, Ink.Faded, TextAnchor.MiddleLeft), -1, -1, 1);
-            _hudTremorWord = UIFactory.Write(seisHead, FontKind.Type, "still", 17, Ink.Black, TextAnchor.MiddleRight);
+            UIFactory.LE(UIFactory.Write(seisHead, FontKind.Type, UIFactory.Spaced(L.T("tremor", "sarsıntı")), 15, Ink.Faded, TextAnchor.MiddleLeft), -1, -1, 1);
+            _hudTremorWord = UIFactory.Write(seisHead, FontKind.Type, L.T("still", "sakin"), 17, Ink.Black, TextAnchor.MiddleRight);
             UIFactory.LE(_hudTremorWord, -1, 170);
             var graphRt = UIFactory.Rect("Graph", seis.Body);
             UIFactory.LE(graphRt, -1, -1, -1, 1);
@@ -101,10 +102,11 @@ namespace SecretJenga.UI
 
             // ---------------- hint + controls (bottom, written on the air)
             _hudHint = UIFactory.Write(g.transform, FontKind.Body, "", 27, Ink.Bone, TextAnchor.MiddleCenter, FontStyle.Italic);
-            UIFactory.Place(_hudHint.rectTransform, new Vector2(0.5f, 0), new Vector2(0.5f, 0), new Vector2(0, 62), new Vector2(1100, 44));
+            UIFactory.Place(_hudHint.rectTransform, new Vector2(0.5f, 0), new Vector2(0.5f, 0), new Vector2(0, 78), new Vector2(1100, 44));
             var controls = UIFactory.Write(g.transform, FontKind.Type,
-                "hold LMB  pull     RMB  look     A/D  lean     W/S  closer     F  knock     C  card     TAB  task     ESC", 15, Ink.BoneFaint, TextAnchor.MiddleCenter);
-            UIFactory.Place(controls.rectTransform, new Vector2(0.5f, 0), new Vector2(0.5f, 0), new Vector2(0, 24), new Vector2(1300, 24));
+                L.T("hold LMB  pull   RMB  look   A/D  lean   W/S  closer   F  knock   C  card   TAB  task   ESC\n1  OK    2  thumbs up    3  middle finger    4  sip of beer    5  wave    6  rock on",
+                    "sol tık basılı  çek   sağ tık  bak   A/D  eğil   W/S  yaklaş   F  masaya vur   C  kart   TAB  görev   ESC\n1  tamam    2  başparmak    3  orta parmak    4  bira yudumu    5  el salla    6  rock"), 15, Ink.BoneFaint, TextAnchor.MiddleCenter);
+            UIFactory.Place(controls.rectTransform, new Vector2(0.5f, 0), new Vector2(0.5f, 0), new Vector2(0, 30), new Vector2(1300, 44));
 
             // ---------------- cursor prompt (written beside the hand)
             _promptText = UIFactory.Write(g.transform, FontKind.Type, "", 18, Ink.Bone, TextAnchor.UpperLeft);
@@ -159,7 +161,7 @@ namespace SecretJenga.UI
             UIFactory.Place(_cardDesc.rectTransform, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0, 58), new Vector2(186, 100));
             _cardMeta = UIFactory.Write(face.transform, FontKind.Type, "", 12, Ink.Faded, TextAnchor.MiddleCenter);
             UIFactory.Place(_cardMeta.rectTransform, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0, 38), new Vector2(190, 20));
-            _cardPlayedStamp = UIFactory.Stamp(face.transform, "PLAYED", new Color(Ink.Red.r, Ink.Red.g, Ink.Red.b, 0.85f), new Vector2(200, 70), 18f);
+            _cardPlayedStamp = UIFactory.Stamp(face.transform, L.T("PLAYED", "OYNANDI"), new Color(Ink.Red.r, Ink.Red.g, Ink.Red.b, 0.85f), new Vector2(200, 70), 18f);
             _cardPlayedStamp.anchoredPosition = new Vector2(0, 10);
             UIFactory.OnPaper = false;
 
@@ -178,7 +180,7 @@ namespace SecretJenga.UI
             var eye = UIFactory.Image(fr, "Eye", A.iconCardPressure != null ? A.iconCardPressure : A.iconSecret, Ink.Red, false);
             eye.preserveAspect = true;
             UIFactory.LE(eye, 40, 46);
-            var ft = UIFactory.Write(fr, FontKind.Type, "your task\nhold TAB", 17, Ink.Black, TextAnchor.MiddleLeft);
+            var ft = UIFactory.Write(fr, FontKind.Type, L.T("your task\nhold TAB", "görevin\nTAB basılı tut"), 17, Ink.Black, TextAnchor.MiddleLeft);
             UIFactory.LE(ft, 52, -1, 1);
             var fb = folded.PaperImage.gameObject.AddComponent<Button>();
             fb.transition = Selectable.Transition.None;
@@ -190,7 +192,7 @@ namespace SecretJenga.UI
             var ob = open.PaperImage.gameObject.AddComponent<Button>();
             ob.transition = Selectable.Transition.None;
             ob.onClick.AddListener(() => _taskPinned = !_taskPinned);
-            UIFactory.Caption(open.Body, "for your eyes only", 17);
+            UIFactory.Caption(open.Body, L.T("for your eyes only", "sadece senin için"), 17);
             _taskTitle = UIFactory.Write(open.Body, FontKind.Title, "", 36, Ink.Black, TextAnchor.MiddleLeft);
             UIFactory.LE(_taskTitle, 46);
             UIFactory.Divider(open.Body, 7);
@@ -224,12 +226,14 @@ namespace SecretJenga.UI
         }
 
         // ------------------------------------------------------------------ Tally marks
+        const int MaxTallyMarks = 40;
+
         void RebuildTally(int required)
         {
             foreach (Transform c in _tallyRow) Destroy(c.gameObject);
             _tallies.Clear();
             var sprite = A.tallyStroke != null ? A.tallyStroke : UIFactory.StrokeSprite;
-            var rnd = new System.Random(required * 7919);
+            var rnd = new System.Random(7919);
             int groups = Mathf.CeilToInt(required / 5f);
             float groupW = 74f, x0 = -(groups * groupW + (groups - 1) * 26f) * 0.5f;
             for (int i = 0; i < required; i++)
@@ -257,17 +261,19 @@ namespace SecretJenga.UI
             _tallyDone = -1;
         }
 
-        void UpdateTally(int done, int required)
+        /// <summary>One scratched mark per good turn - the count only grows; the round ends when the tower falls.</summary>
+        void UpdateTally(int done, int layers)
         {
-            if (required != _tallyRequired) { _tallyRequired = required; RebuildTally(required); }
+            int shown = Mathf.Min(done, MaxTallyMarks);
+            if (shown != _tallyRequired) { _tallyRequired = shown; RebuildTally(shown); }
             if (done == _tallyDone) return;
             bool grew = _tallyDone >= 0 && done > _tallyDone;
             _tallyDone = done;
-            for (int i = 0; i < _tallies.Count; i++)
-                _tallies[i].color = i < done ? Ink.Bone : new Color(Ink.Bone.r, Ink.Bone.g, Ink.Bone.b, 0.13f);
-            if (grew && done - 1 < _tallies.Count) UITween.Pop(_tallies[done - 1].transform, 1.6f, 0.4f);
-            int left = Mathf.Max(0, required - done);
-            _hudTallyText.text = left == 0 ? "it held" : left == 1 ? "one more turn" : $"{done} survived  -  {left} to go";
+            for (int i = 0; i < _tallies.Count; i++) _tallies[i].color = Ink.Bone;
+            if (grew && _tallies.Count > 0) UITween.Pop(_tallies[_tallies.Count - 1].transform, 1.6f, 0.4f);
+            int rnd = _game != null ? _game.RoundNumber.Value : 0, rounds = _game != null ? _game.MatchRounds.Value : 0;
+            _hudTallyText.text = L.T($"round {rnd}/{rounds}   -   {done} good turns   -   {layers} floors   -   whoever drops it: -3",
+                                     $"el {rnd}/{rounds}   -   {done} başarılı tur   -   {layers} kat   -   kuleyi yıkan: -3");
         }
 
         // ------------------------------------------------------------------ Task note
@@ -276,24 +282,25 @@ namespace SecretJenga.UI
             if (_taskTitle == null) return;
             if (t.Kind == TaskKind.None)
             {
-                _taskTitle.text = "Not yet dealt";
-                _taskDesc.text = "Your task arrives when the round begins. Keep it to yourself.";
+                _taskTitle.text = L.T("Not yet dealt", "Henüz dağıtılmadı");
+                _taskDesc.text = L.T("Your task arrives when the round begins. Keep it to yourself.", "Görevin el başlayınca gelir. Kendine sakla.");
                 _taskProgress.text = "";
                 _taskStatus.text = "";
                 _taskStatusCircle.gameObject.SetActive(false);
                 return;
             }
-            int required = _game != null ? _game.RequiredTurns.Value : GameRules.DefaultRequiredTurns;
             var def = GameContent.Task(t.DefinitionIndex);
-            _taskTitle.text = def != null ? def.title : t.Kind.ToString();
-            _taskDesc.text = def != null ? def.Describe(t, required) : "";
-            _taskProgress.text = $"{t.Progress} of {t.Target}";
-            _taskStatus.text = t.Failed ? "failed" : (t.Completed ? "done" : "");
+            _taskTitle.text = def != null ? def.Title : t.Kind.ToString();
+            _taskDesc.text = (def != null ? def.Describe(t) : "") +
+                L.T($"\n<i>reward: +{ScoreRules.TaskValue(def, t.Kind)} points (half done: +{ScoreRules.HalfTask})</i>",
+                    $"\n<i>ödül: +{ScoreRules.TaskValue(def, t.Kind)} puan (yarısı: +{ScoreRules.HalfTask})</i>");
+            _taskProgress.text = L.T($"{t.Progress} of {t.Target}", $"{t.Progress} / {t.Target}");
+            _taskStatus.text = t.Failed ? L.T("failed", "başarısız") : (t.Completed ? L.T("done", "tamam") : "");
             _taskStatus.color = t.Failed ? Ink.Red : Ink.Black;
             _taskStatusCircle.gameObject.SetActive(t.Completed || t.Failed);
             if (justCompleted)
             {
-                Toast("Your secret task is done: " + _taskTitle.text, Palette.Good);
+                Toast(L.T("Your secret task is done: ", "Gizli görevin tamam: ") + _taskTitle.text, Palette.Good);
                 UITween.Pop(_taskFolded, 1.12f, 0.4f);
             }
         }
@@ -330,19 +337,19 @@ namespace SecretJenga.UI
         {
             if (_cardTitle == null) return;
             var def = c.Kind == CardKind.None ? null : GameContent.Card(c.DefinitionIndex);
-            _cardTitle.text = def != null ? def.title : "";
-            _cardDesc.text = def != null ? def.description : "No card yet.";
+            _cardTitle.text = def != null ? def.Title : "";
+            _cardDesc.text = def != null ? def.Description : L.T("No card yet.", "Henüz kart yok.");
             _cardIcon.sprite = CardSymbol(c.Kind);
             _cardIcon.enabled = _cardIcon.sprite != null;
-            _cardMeta.text = def == null ? "" : (def.timing == CardTiming.OwnTurnBeforeExtraction ? "before the block is out" : "before you lay it down") +
-                                               (def.target == CardTarget.NextPlayer ? "  /  on the next" : "");
+            _cardMeta.text = def == null ? "" : (def.timing == CardTiming.OwnTurnBeforeExtraction ? L.T("before the block is out", "blok çıkmadan önce") : L.T("before you lay it down", "bloğu koymadan önce")) +
+                                               (def.target == CardTarget.NextPlayer ? L.T("  /  on the next", "  /  sıradakine") : "");
         }
 
         void OnCardPlayed(ulong user, CardKind kind, ulong target, string message)
         {
             Toast(message, Palette.Lamp);
             if (_game != null && _game.NetworkManager != null && target == _game.NetworkManager.LocalClientId && kind == CardKind.Pressure)
-                ShowBanner("They are watching you", Ink.RedBright);
+                ShowBanner(L.T("They are watching you", "Gözler üzerinde"), Ink.RedBright);
         }
 
         void PlayCard()
@@ -364,7 +371,7 @@ namespace SecretJenga.UI
                 : st == TurnStage.WaitingForGrab || st == TurnStage.Dragging || st == TurnStage.Carrying);
             _cardButton.interactable = has && !c.Used && timingOk;
             _cardPlayedStamp.gameObject.SetActive(has && c.Used);
-            _cardState.text = !has ? "" : c.Used ? "" : (!myTurn ? "keep it for your turn" : (timingOk ? "C  -  play it" : "too late this turn"));
+            _cardState.text = !has ? "" : c.Used ? "" : (!myTurn ? L.T("keep it for your turn", "sıran gelince oyna") : (timingOk ? L.T("C  -  play it", "C  -  oyna") : L.T("too late this turn", "bu tur için geç")));
             _cardState.color = timingOk && !c.Used ? Ink.Bone : Ink.BoneDim;
 
             // the card lifts a little when it can be played, and sinks once it is spent
@@ -392,7 +399,7 @@ namespace SecretJenga.UI
         {
             if (_game == null || _hudBanner == null) return;
             bool mine = _game.NetworkManager != null && clientId == _game.NetworkManager.LocalClientId;
-            ShowBanner(mine ? "Your turn" : $"{_game.PlayerName(clientId)}'s turn", mine ? Palette.Lamp : Ink.Bone);
+            ShowBanner(mine ? L.T("Your turn", "Sıra sende") : L.T($"{_game.PlayerName(clientId)}'s turn", $"Sıra: {_game.PlayerName(clientId)}"), mine ? Palette.Lamp : Ink.Bone);
             _lastTick = -1;
         }
 
@@ -440,8 +447,8 @@ namespace SecretJenga.UI
                 bool isActive = r.id == active && phase == GamePhase.Playing;
                 bool isNext = !isActive && r.id == next && phase == GamePhase.Playing;
                 bool connected = _game.TryGetPlayer(r.id, out var pd) && pd.IsConnected;
-                string name = _game.PlayerName(r.id) + (r.id == me ? " (you)" : "");
-                r.line.text = (isActive ? "→ " : isNext ? "  " : "  ") + name + (isNext ? "   next" : "");
+                string name = _game.PlayerName(r.id) + (r.id == me ? L.T(" (you)", " (sen)") : (_game.IsBot(r.id) ? " (bot)" : ""));
+                r.line.text = (isActive ? "→ " : isNext ? "  " : "  ") + name + (pd.Score != 0 || _game.RoundNumber.Value > 1 ? "   " + pd.Score : "") + (isNext ? L.T("   next", "   sıradaki") : "");
                 r.line.color = !connected ? Ink.Faded : isActive ? Ink.Red : Ink.Black;
                 r.under.gameObject.SetActive(isActive);
                 r.under.rectTransform.sizeDelta = new Vector2(Mathf.Min(260f, r.line.preferredWidth - 20f), 8);
@@ -449,9 +456,8 @@ namespace SecretJenga.UI
                 r.strike.rectTransform.sizeDelta = new Vector2(Mathf.Min(260f, r.line.preferredWidth - 20f), 6);
             }
 
-            // shared objective: tally
-            int done = turns.MovesCompleted.Value, required = Mathf.Max(1, _game.RequiredTurns.Value);
-            UpdateTally(done, required);
+            // good turns so far (no limit: the round lasts until the tower falls)
+            UpdateTally(turns.MovesCompleted.Value, _game.Tower.LayerCount.Value);
 
             // turn line / countdown / timer
             if (phase == GamePhase.Countdown)
@@ -466,10 +472,11 @@ namespace SecretJenga.UI
                     UITween.Pop(_hudCountdown.transform, 1.2f, 0.35f);
                     AudioManager.Instance?.Play(AudioManager.Sfx.Countdown);
                 }
-                _hudTurnLine.text = "Sit still.";
+                _hudTurnLine.text = L.T("Sit still.", "Kıpırdama.");
                 _hudNextLine.text = "";
                 _hudTimer.text = "";
-                _hudHint.text = "Hold TAB to read your secret task. Your card lies at the bottom right.";
+                _hudHint.text = L.T("Hold TAB to read your secret task. Your card lies at the bottom right. Whoever drops the tower loses.",
+                                    "Gizli görevini okumak için TAB basılı tut. Kartın sağ altta. Kuleyi yıkan kaybeder.");
             }
             else
             {
@@ -482,12 +489,12 @@ namespace SecretJenga.UI
                 bool mine = turns.IsLocalPlayersTurn;
                 var stage = turns.Stage.Value;
                 bool settling = stage == TurnStage.Settling;
-                if (phase != GamePhase.Playing) _hudTurnLine.text = "It is over.";
-                else if (mine) _hudTurnLine.text = settling ? "Let it settle." : "Your turn.";
-                else _hudTurnLine.text = settling ? "The tower settles..." : $"{_game.PlayerName(active)} reaches for the tower.";
+                if (phase != GamePhase.Playing) _hudTurnLine.text = L.T("It is over.", "Bitti.");
+                else if (mine) _hudTurnLine.text = settling ? L.T("Let it settle.", "Otursun bekle.") : L.T("Your turn.", "Sıra sende.");
+                else _hudTurnLine.text = settling ? L.T("The tower settles...", "Kule oturuyor...") : L.T($"{_game.PlayerName(active)} reaches for the tower.", $"{_game.PlayerName(active)} kuleye uzanıyor.");
                 _hudTurnLine.color = mine && phase == GamePhase.Playing ? Palette.Lamp : Ink.Bone;
                 _hudNextLine.text = phase == GamePhase.Playing && next != ulong.MaxValue && next != active
-                    ? (next == me ? "you are next" : "next:  " + _game.PlayerName(next)) : "";
+                    ? (next == me ? L.T("you are next", "sıradaki sensin") : L.T("next:  ", "sıradaki:  ") + _game.PlayerName(next)) : "";
 
                 if (!turns.TimerActive.Value) _hudTimer.text = "";
                 else
@@ -509,15 +516,15 @@ namespace SecretJenga.UI
 
             // active card effects (visible to everyone)
             var effects = new List<string>();
-            if (turns.SteadyGripActive.Value) effects.Add("steady grip");
-            if (turns.TouchMoveActive.Value) effects.Add("pressure - touch it, take it");
-            if (turns.SecondChanceArmed.Value) effects.Add("second chance waits");
+            if (turns.SteadyGripActive.Value) effects.Add(L.T("steady grip", "sağlam tutuş"));
+            if (turns.TouchMoveActive.Value) effects.Add(L.T("pressure - touch it, take it", "baskı - dokunduğunu al"));
+            if (turns.SecondChanceArmed.Value) effects.Add(L.T("second chance waits", "ikinci şans hazır"));
             _hudEffects.text = effects.Count > 0 ? string.Join("     /     ", effects) : "";
 
             // tremor
             float w = _game.Stability.Wobble.Value;
             _seismo.Push(w);
-            _hudTremorWord.text = w < 0.12f ? "still" : (w < 0.4f ? "swaying" : "about to fall");
+            _hudTremorWord.text = w < 0.12f ? L.T("still", "sakin") : (w < 0.4f ? L.T("swaying", "sallanıyor") : L.T("about to fall", "yıkılmak üzere"));
             _hudTremorWord.color = w < 0.4f ? Ink.Black : Ink.Red;
             _seismo.color = Color.Lerp(Ink.Black, Ink.Red, Mathf.Clamp01((w - 0.25f) * 2.5f));
 
@@ -536,8 +543,8 @@ namespace SecretJenga.UI
             if (!show) return;
             switch (p)
             {
-                case BlockInteractionController.Prompt.Forbidden: _promptText.text = "not from the top"; break;
-                case BlockInteractionController.Prompt.Committed: _promptText.text = "you touched another one"; break;
+                case BlockInteractionController.Prompt.Forbidden: _promptText.text = L.T("not from the top", "üstten alınmaz"); break;
+                case BlockInteractionController.Prompt.Committed: _promptText.text = L.T("you touched another one", "başka birine dokundun"); break;
             }
             _promptText.color = Ink.RedBright;
             RectTransformUtility.ScreenPointToLocalPointInRectangle(_root, mouse.position.ReadValue(), null, out var local);

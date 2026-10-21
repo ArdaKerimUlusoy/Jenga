@@ -1,0 +1,14 @@
+TLB_Cowboy.fbx
+==============
+
+Base character and animations: "Universal Animation Library" by Quaternius
+https://quaternius.com  -  https://www.patreon.com/quaternius
+
+License: CC0 1.0 Universal (Public Domain Dedication)
+https://creativecommons.org/publicdomain/zero/1.0/
+(Free for personal and commercial use, no attribution required - credited anyway.)
+
+Modified for THE LAST BLOCK by Assets/SecretJenga/Tools~/blender_build_cowboy.py:
+  * only the seated / idle clips are kept
+  * the mannequin is re-coloured into a saloon patron (skin, shirt, vest, trousers, boots)
+  * a cowboy hat and a neckerchief were modelled and attached to the head / neck bones

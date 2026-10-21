@@ -9,7 +9,7 @@ namespace SecretJenga.Game
     /// everything a designer may want to tweak - wording, targets, thresholds, whether it is in the pool - is here.
     /// Create more with Assets > Create > The Last Block > Task Definition and add them to the asset registry.
     ///
-    /// Description tokens: {target} {rows} {threshold} {tolerance} {milestone}
+    /// Description tokens: {target} {rows} {threshold} {thresholdNum} {tolerance} {milestone}
     /// </summary>
     [CreateAssetMenu(menuName = "The Last Block/Task Definition", fileName = "Task_New")]
     public class TaskDefinition : ScriptableObject
@@ -21,6 +21,10 @@ namespace SecretJenga.Game
         [Tooltip("Include this task when tasks are dealt.")]
         public bool inPool = true;
 
+        [Header("Points")]
+        [Tooltip("Points for completing this task. 0 = default for its kind (see ScoreRules).")]
+        [Min(0)] public int bonusPoints = 0;
+
         [Header("Numbers")]
         [Min(1)] public int target = 2;
         [Tooltip("Lower the target when a player will get fewer turns than that this round (keeps every task achievable).")]
@@ -31,17 +35,24 @@ namespace SecretJenga.Game
         [Range(0.05f, 1f)] public float wobbleThreshold = 0.3f;
         [Tooltip("Careful Builder: max displacement of any other block, in world units (1 unit = 5 cm).")]
         public float displacementTolerance = 0.2f;
-        [Tooltip("Tower Keeper: fraction of the shared objective that counts as the milestone.")]
+        [Tooltip("Tower Keeper: fraction of GameRules.TaskTurnHint (group turns) that counts as the milestone.")]
         [Range(0.2f, 1f)] public float milestoneFraction = 0.66f;
 
         public int MilestoneFor(int requiredTurns) => Mathf.Clamp(Mathf.RoundToInt(requiredTurns * milestoneFraction), 1, requiredTurns);
 
+        /// <summary>Localised title (Turkish table by id, else the asset's English title).</summary>
+        public string Title => L.TaskTitle(this);
+
+        public string Describe(TaskInfo info) => Describe(info, GameRules.TaskTurnHint);
+
         public string Describe(TaskInfo info, int requiredTurns)
         {
-            var s = string.IsNullOrEmpty(description) ? title : description;
+            var s = L.TaskDescriptionTemplate(this);
+            if (string.IsNullOrEmpty(s)) s = Title;
             int t = info.Target > 0 ? info.Target : target;
             return s.Replace("{target}", t.ToString())
                 .Replace("{rows}", (maxRiskyRow + 1).ToString())
+                .Replace("{thresholdNum}", Mathf.RoundToInt(wobbleThreshold * 100f).ToString())
                 .Replace("{threshold}", Mathf.RoundToInt(wobbleThreshold * 100f) + "%")
                 .Replace("{tolerance}", Mathf.RoundToInt(displacementTolerance * 50f) + " mm")
                 .Replace("{milestone}", MilestoneFor(requiredTurns).ToString());
@@ -78,7 +89,7 @@ namespace SecretJenga.Game
             pressure.scaleTargetToTurns = false;
 
             var keeper = Make("tower_keeper", "Tower Keeper", TaskKind.TowerKeeper, 1,
-                "Help the group reach {milestone} successful turns (at least one of them yours) and never let the tower fall on your turn.");
+                "Help the table reach {milestone} successful turns (at least one of them yours) and never let the tower fall on your turn.");
             keeper.scaleTargetToTurns = false;
             keeper.milestoneFraction = 0.66f;
 

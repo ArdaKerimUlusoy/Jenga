@@ -9,7 +9,9 @@ namespace SecretJenga.Game
 {
     /// <summary>
     /// Host-authoritative round state: player roster and seats, room settings, game phase and round flow
-    /// (lobby -> countdown -> playing -> results -> play again / back to lobby). Lives on the networked session
+    /// (lobby -> countdown -> playing -> results -> play again / back to lobby). Rule: there is no turn limit - the
+    /// round lasts until the tower falls, and the player whose turn it was loses; everyone else wins.
+    /// The host can seat bots (simulated players) so the game can be tried alone. Lives on the networked session
     /// prefab together with TurnManager, JengaTower, SecretTaskManager, CardManager, TowerStabilityChecker and
     /// AtmosphereSync, so all game-wide state arrives on clients as one object.
     /// </summary>
@@ -26,12 +28,11 @@ namespace SecretJenga.Game
         /// <summary>Roster, settings or phase changed (UI refresh hook).</summary>
         public event Action StateChanged;
         public static event Action<string> Notification;
+        /// <summary>Raised on every client when the round ends. Argument: did the LOCAL player win (did not drop the tower)?</summary>
         public static event Action<bool> MatchEnded;
 
         public NetworkList<PlayerData> Players;
         public readonly NetworkVariable<GamePhase> Phase = new NetworkVariable<GamePhase>(GamePhase.Lobby);
-        /// <summary>Shared objective: successful turns the group must complete.</summary>
-        public readonly NetworkVariable<int> RequiredTurns = new NetworkVariable<int>(GameRules.DefaultRequiredTurns);
         public readonly NetworkVariable<int> StartLayers = new NetworkVariable<int>(GameRules.DefaultStartLayers);
         /// <summary>Turn timer in seconds, 0 = off.</summary>
         public readonly NetworkVariable<int> TurnSeconds = new NetworkVariable<int>(GameRules.DefaultTurnSeconds);
@@ -40,10 +41,15 @@ namespace SecretJenga.Game
         public readonly NetworkVariable<FixedString64Bytes> RoomName = new NetworkVariable<FixedString64Bytes>();
         public readonly NetworkVariable<bool> IsDirectSession = new NetworkVariable<bool>();
         public readonly NetworkVariable<double> CountdownEndTime = new NetworkVariable<double>();
-        public readonly NetworkVariable<bool> TeamWon = new NetworkVariable<bool>();
+        /// <summary>The player who dropped the tower (ulong.MaxValue = nobody, e.g. abandoned round).</summary>
+        public readonly NetworkVariable<ulong> LoserClientId = new NetworkVariable<ulong>(ulong.MaxValue);
         public readonly NetworkVariable<RoundEndReason> EndReasonKind = new NetworkVariable<RoundEndReason>();
         public readonly NetworkVariable<FixedString128Bytes> EndReason = new NetworkVariable<FixedString128Bytes>();
         public readonly NetworkVariable<int> MatchIndex = new NetworkVariable<int>();
+        /// <summary>Rounds per match (points add up; highest total after the last round wins).</summary>
+        public readonly NetworkVariable<int> MatchRounds = new NetworkVariable<int>(GameRules.DefaultMatchRounds);
+        /// <summary>Current round of the match (1-based, 0 = no match yet).</summary>
+        public readonly NetworkVariable<int> RoundNumber = new NetworkVariable<int>();
 
         public TurnManager Turns { get; private set; }
         public JengaTower Tower { get; private set; }
@@ -72,10 +78,11 @@ namespace SecretJenga.Game
             Instance = this;
             Players.OnListChanged += OnPlayersChanged;
             Phase.OnValueChanged += OnPhaseChanged;
-            RequiredTurns.OnValueChanged += OnIntChanged;
             StartLayers.OnValueChanged += OnIntChanged;
             TurnSeconds.OnValueChanged += OnIntChanged;
             MaxPlayers.OnValueChanged += OnIntChanged;
+            MatchRounds.OnValueChanged += OnIntChanged;
+            RoundNumber.OnValueChanged += OnIntChanged;
             RoomCode.OnValueChanged += OnCodeChanged;
             LastKnownPhase = Phase.Value;
 
@@ -90,10 +97,11 @@ namespace SecretJenga.Game
         {
             Players.OnListChanged -= OnPlayersChanged;
             Phase.OnValueChanged -= OnPhaseChanged;
-            RequiredTurns.OnValueChanged -= OnIntChanged;
             StartLayers.OnValueChanged -= OnIntChanged;
             TurnSeconds.OnValueChanged -= OnIntChanged;
             MaxPlayers.OnValueChanged -= OnIntChanged;
+            MatchRounds.OnValueChanged -= OnIntChanged;
+            RoundNumber.OnValueChanged -= OnIntChanged;
             RoomCode.OnValueChanged -= OnCodeChanged;
             if (Instance == this) Instance = null;
             Despawned?.Invoke();
@@ -133,6 +141,24 @@ namespace SecretJenga.Game
 
         public bool IsLocalHost => IsServer;
 
+        public bool IsBot(ulong clientId) => clientId >= GameRules.BotIdBase || (TryGetPlayer(clientId, out var p) && p.IsBot);
+
+        public int BotCount
+        {
+            get
+            {
+                int n = 0;
+                foreach (var p in Players) if (p.IsBot) n++;
+                return n;
+            }
+        }
+
+        /// <summary>The last round of the match has been played (shown on the results screen).</summary>
+        public bool MatchOver => RoundNumber.Value >= MatchRounds.Value && RoundNumber.Value > 0;
+
+        /// <summary>True when the local player lost the last round.</summary>
+        public bool LocalLost => NetworkManager != null && LoserClientId.Value == NetworkManager.LocalClientId;
+
         public PlayerData? LocalPlayer
         {
             get
@@ -166,10 +192,10 @@ namespace SecretJenga.Game
         {
             int connected = ConnectedCount;
             bool solo = IsServer && GameSettings.AllowSoloStart;
-            if (Phase.Value != GamePhase.Lobby) { reason = "A round is already running."; return false; }
-            if (connected < GameRules.MinPlayers && !solo) { reason = "Need at least 2 players at the table."; return false; }
+            if (Phase.Value != GamePhase.Lobby) { reason = L.Msg("already_running"); return false; }
+            if (connected < GameRules.MinPlayers && !solo) { reason = L.Msg("need_two"); return false; }
             foreach (var p in Players)
-                if (p.IsConnected && !p.IsHost && !p.IsReady) { reason = "Waiting for everyone to be ready."; return false; }
+                if (p.IsConnected && !p.IsHost && !p.IsBot && !p.IsReady) { reason = L.Msg("wait_ready"); return false; }
             reason = null;
             return true;
         }
@@ -178,15 +204,15 @@ namespace SecretJenga.Game
         public void ServerApplySettings(RoomSettings s)
         {
             MaxPlayers.Value = Mathf.Clamp(s.maxPlayers, GameRules.MinPlayers, GameRules.MaxPlayers);
-            ApplyGameSettings(s.requiredTurns, s.startLayers, s.turnSeconds);
+            ApplyGameSettings(s.startLayers, s.turnSeconds, s.matchRounds);
             RoomName.Value = new FixedString64Bytes(Truncate(s.roomName, 60));
             IsDirectSession.Value = s.direct;
         }
 
-        void ApplyGameSettings(int requiredTurns, int startLayers, int turnSeconds)
+        void ApplyGameSettings(int startLayers, int turnSeconds, int matchRounds)
         {
+            MatchRounds.Value = Mathf.Clamp(matchRounds, GameRules.MinMatchRounds, GameRules.MaxMatchRounds);
             StartLayers.Value = Mathf.Clamp(startLayers, GameRules.MinStartLayers, GameRules.MaxStartLayers);
-            RequiredTurns.Value = Mathf.Clamp(requiredTurns, GameRules.MinRequiredTurns, GameRules.MaxRequiredTurns);
             TurnSeconds.Value = turnSeconds <= 0 ? 0 : Mathf.Clamp(turnSeconds, GameRules.MinTurnSeconds, GameRules.MaxTurnSeconds);
         }
 
@@ -203,12 +229,12 @@ namespace SecretJenga.Game
             int idx = IndexByAuth(p.authId);
             if (idx >= 0)
             {
-                if (Players[idx].IsConnected) { reason = "This player is already connected to the room."; return false; }
+                if (Players[idx].IsConnected) { reason = L.Resolve(L.Msg("already_conn")); return false; }
                 reason = null;
                 return true; // reconnecting player
             }
-            if (Phase.Value != GamePhase.Lobby) { reason = "The round has already started."; return false; }
-            if (ConnectedCount >= MaxPlayers.Value) { reason = "The table is full."; return false; }
+            if (Phase.Value != GamePhase.Lobby) { reason = L.Resolve(L.Msg("already_started")); return false; }
+            if (ConnectedCount >= MaxPlayers.Value) { reason = L.Resolve(L.Msg("table_full")); return false; }
             reason = null;
             return true;
         }
@@ -227,7 +253,7 @@ namespace SecretJenga.Game
                 Turns.ServerOnPlayerReconnected(oldId, clientId);
                 Tasks.ServerResendTo(clientId);
                 Cards.ServerResendTo(clientId);
-                ServerNotify($"{existing.Name} is back at the table.");
+                ServerNotify(L.Msg("back", existing.Name));
                 return;
             }
 
@@ -244,7 +270,69 @@ namespace SecretJenga.Game
             };
             data.IsReady = data.IsHost;
             Players.Add(data);
-            ServerNotify($"{data.Name} takes a seat.");
+            ServerNotify(L.Msg("sits", data.Name));
+        }
+
+        // ------------------------------------------------------------------ Server: bots
+        static readonly string[] BotNames = { "Doc Holloway", "Slim Jenkins", "Calamity Rose", "Dusty Pete", "Rattlesnake Ray", "Whiskey Jack", "Ma Barker", "Two-Bit Tom" };
+        ulong _nextBotId = GameRules.BotIdBase;
+
+        public bool ServerAddBot()
+        {
+            if (!IsServer || Phase.Value != GamePhase.Lobby) return false;
+            if (ConnectedCount >= MaxPlayers.Value || Players.Count >= SeatLayout.SeatCount) return false;
+            string name = BotNames[UnityEngine.Random.Range(0, BotNames.Length)];
+            for (int i = 0; i < BotNames.Length; i++)
+            {
+                bool used = false;
+                foreach (var p in Players) if (p.Name.ToString() == BotNames[i]) used = true;
+                if (!used) { name = BotNames[i]; break; }
+            }
+            ulong id = _nextBotId++;
+            var data = new PlayerData
+            {
+                ClientId = id,
+                AuthId = new FixedString64Bytes("bot-" + id),
+                Name = new FixedString32Bytes(UniqueName(name)),
+                ColorIndex = (byte)PickColor(-1),
+                SeatIndex = (byte)PickSeat(),
+                IsHost = false,
+                IsBot = true,
+                IsConnected = true,
+                IsReady = true,
+                JoinOrder = _nextJoinOrder++,
+            };
+            Players.Add(data);
+            ServerNotify(L.Msg("bot_join", data.Name));
+            return true;
+        }
+
+        public bool ServerRemoveBot()
+        {
+            if (!IsServer || Phase.Value != GamePhase.Lobby) return false;
+            for (int i = Players.Count - 1; i >= 0; i--)
+            {
+                if (!Players[i].IsBot) continue;
+                var name = Players[i].Name;
+                Players.RemoveAt(i);
+                ServerNotify(L.Msg("bot_left", name));
+                return true;
+            }
+            return false;
+        }
+
+        [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
+        public void AddBotServerRpc(RpcParams rpc = default)
+        {
+            if (rpc.Receive.SenderClientId != NetworkManager.ServerClientId) return;
+            ServerAddBot();
+        }
+
+        [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
+        public void RemoveBotServerRpc(RpcParams rpc = default)
+        {
+            if (rpc.Receive.SenderClientId != NetworkManager.ServerClientId) return;
+            ServerRemoveBot();
         }
 
         string UniqueName(string n)
@@ -281,15 +369,18 @@ namespace SecretJenga.Game
             {
                 Players.RemoveAt(idx);
                 _ = LobbyManager.Instance?.RemovePlayerAsync(p.AuthId.ToString());
-                ServerNotify($"{p.Name} left the table.");
+                ServerNotify(L.Msg("left", p.Name));
             }
             else
             {
                 p.IsConnected = false;
                 p.IsReady = false;
                 Players[idx] = p;
-                ServerNotify($"{p.Name} lost connection. Their turns are skipped until they return.");
+                ServerNotify(L.Msg("lost_conn", p.Name));
                 Turns.ServerOnPlayerDisconnected(clientId);
+                // Nobody left to play against: end without a loser.
+                if (Phase.Value == GamePhase.Playing && ConnectedCount < GameRules.MinPlayers && !GameSettings.AllowSoloStart)
+                    ServerEndGame(RoundEndReason.NotEnoughPlayers, ulong.MaxValue, L.Msg("abandoned"));
             }
         }
 
@@ -323,11 +414,10 @@ namespace SecretJenga.Game
         }
 
         [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
-        public void UpdateSettingsServerRpc(int requiredTurns, int startLayers, int turnSeconds, RpcParams rpc = default)
+        public void UpdateSettingsServerRpc(int startLayers, int turnSeconds, int matchRounds, RpcParams rpc = default)
         {
             if (rpc.Receive.SenderClientId != NetworkManager.ServerClientId || Phase.Value != GamePhase.Lobby) return;
-            ApplyGameSettings(requiredTurns, startLayers, turnSeconds);
-            _ = LobbyManager.Instance?.SetTargetAsync(RequiredTurns.Value);
+            ApplyGameSettings(startLayers, turnSeconds, matchRounds);
         }
 
         [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
@@ -335,15 +425,15 @@ namespace SecretJenga.Game
         {
             if (rpc.Receive.SenderClientId != NetworkManager.ServerClientId) return;
             if (!CanStart(out var reason)) { ServerNotify(reason); return; }
-            ServerStartMatch();
+            ServerStartMatch(true);
         }
 
         [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
         public void PlayAgainServerRpc(RpcParams rpc = default)
         {
             if (rpc.Receive.SenderClientId != NetworkManager.ServerClientId || Phase.Value != GamePhase.GameOver) return;
-            if (ConnectedCount < GameRules.MinPlayers && !GameSettings.AllowSoloStart) { ServerNotify("Need at least 2 connected players. Returning to the lobby."); ServerReturnToLobby(); return; }
-            ServerStartMatch();
+            if (ConnectedCount < GameRules.MinPlayers && !GameSettings.AllowSoloStart) { ServerNotify(L.Msg("need_two_back")); ServerReturnToLobby(); return; }
+            ServerStartMatch(MatchOver); // next round of the match, or a fresh match after the last one
         }
 
         [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
@@ -354,23 +444,37 @@ namespace SecretJenga.Game
         }
 
         [ClientRpc]
-        void NotifyClientRpc(FixedString128Bytes msg) => Notification?.Invoke(msg.ToString());
+        void NotifyClientRpc(FixedString128Bytes msg) => Notification?.Invoke(L.Resolve(msg.ToString()));
 
         [ClientRpc]
-        void MatchEndedClientRpc(bool won) => MatchEnded?.Invoke(won);
+        void MatchEndedClientRpc(ulong loser) => MatchEnded?.Invoke(loser != NetworkManager.LocalClientId);
 
         [ClientRpc]
-        void RoundResultsClientRpc(PlayerRoundResult[] results, bool won, RoundEndReason reason, FixedString128Bytes reasonText, int successful, int required, FixedString512Bytes cards)
+        void RoundResultsClientRpc(PlayerRoundResult[] results, ulong loser, RoundEndReason reason, FixedString128Bytes reasonText, int successful, FixedString512Bytes cards, int round, int rounds)
         {
-            RoundResults.Set(results, won, reason, reasonText.ToString(), successful, required, cards.ToString());
+            RoundResults.Set(results, loser, reason, reasonText.ToString(), successful, cards.ToString(), round, rounds);
         }
 
         // ------------------------------------------------------------------ Server: round flow
-        void ServerStartMatch()
+        /// <param name="newMatch">true = scores back to zero and round 1; false = next round of the running match.</param>
+        void ServerStartMatch(bool newMatch)
         {
             // drop players that disconnected during a previous round
             for (int i = Players.Count - 1; i >= 0; i--)
                 if (!Players[i].IsConnected) Players.RemoveAt(i);
+
+            if (newMatch || RoundNumber.Value <= 0)
+            {
+                RoundNumber.Value = 0;
+                for (int i = 0; i < Players.Count; i++)
+                {
+                    var p = Players[i];
+                    if (p.Score == 0) continue;
+                    p.Score = 0;
+                    Players[i] = p;
+                }
+            }
+            RoundNumber.Value++;
 
             var order = new List<ulong>();
             foreach (var p in Players) if (p.IsConnected) order.Add(p.ClientId);
@@ -378,12 +482,12 @@ namespace SecretJenga.Game
 
             Tower.ServerBuild(StartLayers.Value);
             var sorted = PlayersSorted();
-            var dealt = Tasks.ServerDeal(sorted, RequiredTurns.Value);
+            var dealt = Tasks.ServerDeal(sorted);
             Cards.ServerDeal(sorted, dealt);
             Turns.ServerPrepare(order);
             Atmosphere.ServerReset();
 
-            TeamWon.Value = false;
+            LoserClientId.Value = ulong.MaxValue;
             EndReason.Value = default;
             EndReasonKind.Value = RoundEndReason.None;
             MatchIndex.Value++;
@@ -402,22 +506,23 @@ namespace SecretJenga.Game
             }
         }
 
-        /// <summary>Called by TowerStabilityChecker when blocks have fallen (pure physics, nothing scripted).</summary>
+        /// <summary>Called by TowerStabilityChecker when blocks have fallen (pure physics, nothing scripted). Whoever was playing loses.</summary>
         public void ServerOnTowerCollapsed(ulong culprit)
         {
             if (!IsServer || Phase.Value != GamePhase.Playing) return;
             Tasks.ServerOnCollapse(culprit);
             int done = Turns.MovesCompleted.Value;
-            ServerEndGame(false, RoundEndReason.TowerCollapsed, $"The tower fell during {PlayerName(culprit)}'s turn after {done} of {RequiredTurns.Value} successful turns.");
+            string msg = culprit == ulong.MaxValue ? L.Msg("fell_nobody") : L.Msg("fell", PlayerName(culprit), done);
+            ServerEndGame(RoundEndReason.TowerCollapsed, culprit, msg);
         }
 
-        public void ServerEndGame(bool won, RoundEndReason kind, string reason)
+        public void ServerEndGame(RoundEndReason kind, ulong loser, string reason)
         {
             if (!IsServer || Phase.Value != GamePhase.Playing) return;
-            TeamWon.Value = won;
+            LoserClientId.Value = loser;
             EndReasonKind.Value = kind;
             EndReason.Value = new FixedString128Bytes(Truncate(reason, 120));
-            ulong culprit = kind == RoundEndReason.TowerCollapsed ? Turns.ActiveClientId.Value : ulong.MaxValue;
+            ulong culprit = loser;
             Turns.ServerStop();
 
             var results = new List<PlayerRoundResult>();
@@ -426,8 +531,24 @@ namespace SecretJenga.Game
                 string auth = p.AuthId.ToString();
                 Tasks.ServerTryGetResult(auth, out var task, out int own, out bool caused);
                 Cards.ServerTryGetCard(auth, out var card);
+
+                // points: survival + secret task, added to the match total
+                int survival = ScoreRules.SurvivalPoints(kind, p.ClientId == loser, p.IsConnected);
+                int taskPts = ScoreRules.TaskPoints(task);
+                int idx = IndexByClient(p.ClientId);
+                int total = p.Score + survival + taskPts;
+                if (idx >= 0)
+                {
+                    var upd = Players[idx];
+                    upd.Score = total;
+                    Players[idx] = upd;
+                }
+
                 results.Add(new PlayerRoundResult
                 {
+                    SurvivalPoints = survival,
+                    TaskPoints = taskPts,
+                    TotalScore = total,
                     ClientId = p.ClientId,
                     Name = p.Name,
                     ColorIndex = p.ColorIndex,
@@ -437,10 +558,18 @@ namespace SecretJenga.Game
                     CausedCollapse = caused || p.ClientId == culprit,
                 });
             }
-            string cards = Cards.ServerLog.Count == 0 ? "No cards were played." : string.Join("\n", Cards.ServerLog);
-            RoundResultsClientRpc(results.ToArray(), won, kind, new FixedString128Bytes(Truncate(reason, 120)), Turns.MovesCompleted.Value, RequiredTurns.Value, new FixedString512Bytes(Truncate(cards, 500)));
+            string cards = Cards.ServerLog.Count == 0 ? L.Msg("no_cards") : string.Join("\n", Cards.ServerLog);
+            RoundResultsClientRpc(results.ToArray(), loser, kind, new FixedString128Bytes(Truncate(reason, 120)), Turns.MovesCompleted.Value, new FixedString512Bytes(Truncate(cards, 500)), RoundNumber.Value, MatchRounds.Value);
             Phase.Value = GamePhase.GameOver;
-            MatchEndedClientRpc(won);
+            MatchEndedClientRpc(loser);
+
+            // bots react: the one who dropped it is not amused, the others raise their beer
+            foreach (var p in Players)
+            {
+                if (!p.IsBot || !p.IsConnected) continue;
+                if (p.ClientId == loser) HandSync.ServerBotGesture(p.ClientId, UnityEngine.Random.value < 0.6f ? Gesture.MiddleFinger : Gesture.Wave);
+                else if (loser != ulong.MaxValue) HandSync.ServerBotGesture(p.ClientId, UnityEngine.Random.value < 0.6f ? Gesture.Beer : Gesture.ThumbsUp);
+            }
         }
 
         void ServerReturnToLobby()
@@ -453,7 +582,7 @@ namespace SecretJenga.Game
             {
                 var p = Players[i];
                 if (!p.IsConnected) { Players.RemoveAt(i); continue; }
-                p.IsReady = p.IsHost;
+                p.IsReady = p.IsHost || p.IsBot;
                 Players[i] = p;
             }
             Phase.Value = GamePhase.Lobby;

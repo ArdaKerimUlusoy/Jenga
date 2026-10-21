@@ -187,7 +187,7 @@ namespace SecretJenga.UI
         public static string Spaced(string s)
         {
             var sb = new System.Text.StringBuilder();
-            foreach (var ch in s.ToUpperInvariant()) { sb.Append(ch); sb.Append(ch == ' ' ? "  " : " "); }
+            foreach (var ch in L.Upper(s)) { sb.Append(ch); sb.Append(ch == ' ' ? "  " : " "); }
             return sb.ToString().TrimEnd();
         }
 
@@ -487,7 +487,7 @@ namespace SecretJenga.UI
             LE(blot, size, size);
             blot.rectTransform.sizeDelta = new Vector2(size, size);
             blot.rectTransform.localRotation = Quaternion.Euler(0, 0, (name != null ? name.GetHashCode() % 40 : 0));
-            var letter = Write(blot.transform, FontKind.Title, string.IsNullOrEmpty(name) ? "?" : name.Substring(0, 1).ToUpperInvariant(),
+            var letter = Write(blot.transform, FontKind.Title, string.IsNullOrEmpty(name) ? "?" : L.Upper(name.Substring(0, 1)),
                 Mathf.RoundToInt(size * 0.55f), new Color(0.95f, 0.92f, 0.85f, 0.92f), TextAnchor.MiddleCenter);
             Stretch(letter.rectTransform, 0, 0, 0, size * 0.04f);
             letter.rectTransform.localRotation = Quaternion.Inverse(blot.rectTransform.localRotation);

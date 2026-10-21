@@ -7,7 +7,8 @@ namespace SecretJenga.Game
 {
     /// <summary>
     /// Local presentation of the room's mood. Reads the replicated tension (AtmosphereSync) and the synced events,
-    /// then drives the hanging lamp (intensity noise, flicker bursts, sway), the room sounds (lamp hum, drone,
+    /// then drives the wagon-wheel chandelier (candle noise, flicker bursts, sway), the wall lanterns (gentle
+    /// candle flicker, they only dip a little when the chandelier flickers), the room sounds (lamp hum, drone,
     /// heartbeat at high tension, distant metal, chair creaks) and the post-processing (vignette, exposure).
     /// Effects are brief and restrained: the tower must always stay readable.
     /// </summary>
@@ -20,6 +21,10 @@ namespace SecretJenga.Game
         public Light bulbGlow;
         public Transform lampRig;
         public Renderer bulbRenderer;
+        [Tooltip("Other glowing things (lantern glass) that follow the flicker.")]
+        public Renderer[] extraBulbs;
+        [Tooltip("Wall lanterns: soft independent flicker, only partly affected by the chandelier flicker.")]
+        public Light[] roomLights;
         public Volume volume;
 
         [Header("Tuning")]
@@ -30,6 +35,8 @@ namespace SecretJenga.Game
 
         float _baseLamp, _baseGlow, _flickerMul = 1f, _swayVel, _swayAngle, _swayAngle2, _swayVel2, _tension;
         Color _bulbEmission;
+        Color[] _extraEmission;
+        float[] _roomBase;
         MaterialPropertyBlock _mpb;
         Vignette _vignette;
         ColorAdjustments _color;
@@ -50,6 +57,18 @@ namespace SecretJenga.Game
             if (bulbGlow != null) _baseGlow = bulbGlow.intensity;
             if (bulbRenderer != null && bulbRenderer.sharedMaterial != null && bulbRenderer.sharedMaterial.HasProperty("_EmissionColor"))
                 _bulbEmission = bulbRenderer.sharedMaterial.GetColor("_EmissionColor");
+            if (extraBulbs != null)
+            {
+                _extraEmission = new Color[extraBulbs.Length];
+                for (int i = 0; i < extraBulbs.Length; i++)
+                    if (extraBulbs[i] != null && extraBulbs[i].sharedMaterial != null && extraBulbs[i].sharedMaterial.HasProperty("_EmissionColor"))
+                        _extraEmission[i] = extraBulbs[i].sharedMaterial.GetColor("_EmissionColor");
+            }
+            if (roomLights != null)
+            {
+                _roomBase = new float[roomLights.Length];
+                for (int i = 0; i < roomLights.Length; i++) _roomBase[i] = roomLights[i] != null ? roomLights[i].intensity : 0f;
+            }
             if (volume != null && volume.profile != null)
             {
                 volume.profile.TryGet(out _vignette);
@@ -122,6 +141,24 @@ namespace SecretJenga.Game
                 bulbRenderer.GetPropertyBlock(_mpb);
                 _mpb.SetColor("_EmissionColor", _bulbEmission * Mathf.Max(0.05f, lampMul));
                 bulbRenderer.SetPropertyBlock(_mpb);
+            }
+
+            // wall lanterns: each flame breathes on its own; a chandelier flicker only dims them slightly
+            if (roomLights != null && _roomBase != null)
+            {
+                float shared = Mathf.Lerp(1f, _flickerMul, 0.3f);
+                for (int i = 0; i < roomLights.Length; i++)
+                {
+                    if (roomLights[i] == null) continue;
+                    float f = 0.9f + 0.1f * Mathf.PerlinNoise(Time.time * 3.1f + i * 7.7f, i * 1.3f) + 0.04f * Mathf.Sin(Time.time * 11f + i);
+                    roomLights[i].intensity = _roomBase[i] * f * shared;
+                    if (extraBulbs != null && i < extraBulbs.Length && extraBulbs[i] != null && _extraEmission != null && _extraEmission[i].maxColorComponent > 0f)
+                    {
+                        extraBulbs[i].GetPropertyBlock(_mpb);
+                        _mpb.SetColor("_EmissionColor", _extraEmission[i] * f * shared);
+                        extraBulbs[i].SetPropertyBlock(_mpb);
+                    }
+                }
             }
 
             // lamp sway: a damped pendulum, gently pushed more as tension rises

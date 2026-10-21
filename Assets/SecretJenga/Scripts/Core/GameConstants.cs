@@ -31,8 +31,8 @@ namespace SecretJenga
         public const float FloorY = -14f;          // table is ~70 cm high
         public const float ChairRadius = 11.6f;    // chair center distance from the tower
         public const float EyeRadius = 9.6f;      // seated eye distance from the tower
-        public const float EyeHeight = 6.4f;       // seated eye height above the table top
-        public const float LampHeight = 12f;
+        public const float EyeHeight = 8.6f;       // seated eye height above the table top (high enough to see the top of a tall tower)
+        public const float LampHeight = 22f;       // wagon-wheel chandelier, high enough to never hide the tower
 
         /// <summary>Order in which seats are handed out so that 2-4 players are spread around the table.</summary>
         public static readonly int[] FillOrder = { 0, 3, 1, 4, 2 };
@@ -70,17 +70,24 @@ namespace SecretJenga
     public enum CardTarget : byte { Self = 0, NextPlayer = 1 }
 
     /// <summary>Why a round ended (shown on the results screen).</summary>
-    public enum RoundEndReason : byte { None = 0, ObjectiveComplete = 1, TowerCollapsed = 2, NotEnoughPlayers = 3 }
+    public enum RoundEndReason : byte { None = 0, ObjectiveComplete = 1 /* unused: rounds no longer have a turn limit */, TowerCollapsed = 2, NotEnoughPlayers = 3 }
 
     public static class GameRules
     {
         public const int MinPlayers = 2;
         public const int MaxPlayers = 5;
 
-        // Shared objective: "Keep the tower standing until the group completes N successful turns."
-        public const int DefaultRequiredTurns = 12;
-        public const int MinRequiredTurns = 4;
-        public const int MaxRequiredTurns = 40;
+        // Rule: there is no turn limit. Play goes round the table until the tower falls; whoever drops it loses,
+        // everybody else wins. TaskTurnHint is only the "typical round length" used to size secret task targets.
+        public const int TaskTurnHint = 12;
+
+        /// <summary>Rounds per match; points add up over the match and the highest total wins (see ScoreRules).</summary>
+        public const int DefaultMatchRounds = 3;
+        public const int MinMatchRounds = 1;
+        public const int MaxMatchRounds = 9;
+
+        /// <summary>Bots get client ids far above anything NGO hands out.</summary>
+        public const ulong BotIdBase = 9_000_000_000UL;
 
         public const int DefaultStartLayers = 15;
         public const int MinStartLayers = 8;
@@ -95,7 +102,7 @@ namespace SecretJenga
         public const float SettleMinSeconds = 1.2f;
         public const float SettleMaxSeconds = 6f;
         public const float SettleCalmSeconds = 0.6f;
-        public const string BuildVersion = "tlb-0.1";
+        public const string BuildVersion = "tlb-0.2";
         public const string GameTitle = "THE LAST BLOCK";
     }
 

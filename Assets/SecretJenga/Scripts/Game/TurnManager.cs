@@ -24,6 +24,8 @@ namespace SecretJenga.Game
     /// handled at a time. Stages: WaitingForGrab -> Dragging (physics push/pull inside the tower) -> Carrying
     /// (lifted out, kinematic) -> Settling (placed on top, waiting for the tower to calm down) -> next turn.
     /// A turn is "successful" when a block was extracted and placed and the tower is still standing after settling.
+    /// There is no turn limit: the round goes on until the tower falls - the player whose turn it was loses.
+    /// Bots (host-side BotBrain) drive their turns through the same Server* methods the RPCs use.
     /// Card effects (Steady Grip, Pressure, Second Chance) are applied here; CardManager validates who may play what.
     /// </summary>
     public class TurnManager : NetworkBehaviour
@@ -37,7 +39,7 @@ namespace SecretJenga.Game
         public readonly NetworkVariable<ulong> NextClientId = new NetworkVariable<ulong>(ulong.MaxValue);
         public readonly NetworkVariable<TurnStage> Stage = new NetworkVariable<TurnStage>(TurnStage.None);
         public readonly NetworkVariable<int> TurnNumber = new NetworkVariable<int>();
-        /// <summary>Successful turns completed by the group this round (the shared objective counter).</summary>
+        /// <summary>Successful turns completed at the table this round.</summary>
         public readonly NetworkVariable<int> MovesCompleted = new NetworkVariable<int>();
         public readonly NetworkVariable<bool> TimerActive = new NetworkVariable<bool>();
         public readonly NetworkVariable<double> TurnEndTime = new NetworkVariable<double>();
@@ -59,6 +61,7 @@ namespace SecretJenga.Game
         public const float NormalLateralFollow = 0.12f;
 
         NetworkGameManager _game;
+        BotBrain _bot;
 
         // ---- server-only turn context
         int _orderIndex = -1;
@@ -119,6 +122,7 @@ namespace SecretJenga.Game
 
         public void ServerStop()
         {
+            _bot?.Stop();
             if (_held != null) _held.ServerEndHold();
             _held = null;
             _touched = null;
@@ -220,6 +224,12 @@ namespace SecretJenga.Game
             RefreshNext();
             TurnStartedClientRpc(next, TouchMoveActive.Value);
             _game.Tasks.ServerOnTurnStarted(next);
+            if (_game.IsBot(next))
+            {
+                if (_bot == null) _bot = new BotBrain(this, _game);
+                _bot.Begin(next);
+            }
+            else _bot?.Stop();
         }
 
         [ClientRpc]
@@ -227,7 +237,7 @@ namespace SecretJenga.Game
         {
             if (clientId == NetworkManager.LocalClientId) AudioManager.Instance?.Play(AudioManager.Sfx.TurnStart);
             if (pressured && clientId == NetworkManager.LocalClientId)
-                PrivateMessage?.Invoke("Pressure is on you: you must take the first block you touch.");
+                PrivateMessage?.Invoke(L.Resolve(L.Msg("pressure_on_you")));
         }
 
         // ------------------------------------------------------------------ Card effects (called by CardManager after validation)
@@ -262,27 +272,30 @@ namespace SecretJenga.Game
         }
 
         // ------------------------------------------------------------------ Client requests
-        bool IsActive(RpcParams rpc) =>
-            _game.Phase.Value == GamePhase.Playing && rpc.Receive.SenderClientId == ActiveClientId.Value;
+        bool IsActive(ulong sender) =>
+            _game.Phase.Value == GamePhase.Playing && sender == ActiveClientId.Value;
 
         [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
         public void RequestGrabServerRpc(ulong blockId, Vector3 hitPoint, RpcParams rpc = default)
+            => ServerTryGrab(rpc.Receive.SenderClientId, JengaBlock.Find(blockId), hitPoint);
+
+        /// <summary>Host: the active player (human via RPC, or bot) touches a block.</summary>
+        public bool ServerTryGrab(ulong sender, JengaBlock block, Vector3 hitPoint)
         {
-            if (!IsActive(rpc) || Stage.Value != TurnStage.WaitingForGrab) return;
-            var block = JengaBlock.Find(blockId);
-            if (block == null) return;
+            if (!IsActive(sender) || Stage.Value != TurnStage.WaitingForGrab) return false;
+            if (block == null) return false;
             if (!_game.Tower.CanExtract(block, out var reason))
             {
-                SendPrivateMessage(rpc.Receive.SenderClientId, reason);
-                return;
+                SendPrivateMessage(sender, reason);
+                return false;
             }
             if (TouchMoveActive.Value)
             {
                 if (_committed == null) { _committed = block; CommittedBlockId.Value = block.NetworkObjectId; }
                 else if (_committed != block)
                 {
-                    SendPrivateMessage(rpc.Receive.SenderClientId, "Pressure: you must take the block you touched first.");
-                    return;
+                    SendPrivateMessage(sender, L.Msg("pressure_touched"));
+                    return false;
                 }
             }
             if (_snapshot == null) _snapshot = _game.Tower.SnapshotPositions(block);
@@ -293,17 +306,21 @@ namespace SecretJenga.Game
             _grabOffset = hitPoint - _grabStart;
             _grabOffset.y = 0;
             _dragPoint = hitPoint;
-            _game.TryGetPlayer(rpc.Receive.SenderClientId, out var pd);
+            _game.TryGetPlayer(sender, out var pd);
             block.ServerBeginHold(pd.ColorIndex, SteadyGripActive.Value && _steadyDef != null ? JengaBlock.HeldMaterial(_steadyDef.heldFriction) : null);
             HeldBlockId.Value = block.NetworkObjectId;
             CursorPoint.Value = hitPoint;
             Stage.Value = TurnStage.Dragging;
+            return true;
         }
 
         [Rpc(SendTo.Server, Delivery = RpcDelivery.Unreliable, InvokePermission = RpcInvokePermission.Everyone)]
-        public void DragInputServerRpc(Vector3 worldPoint, RpcParams rpc = default)
+        public void DragInputServerRpc(Vector3 worldPoint, RpcParams rpc = default) => ServerSetInput(rpc.Receive.SenderClientId, worldPoint);
+
+        /// <summary>Host: where the active player's hand is pointing (drag target / carry target).</summary>
+        public void ServerSetInput(ulong sender, Vector3 worldPoint)
         {
-            if (!IsActive(rpc) || _held == null) return;
+            if (!IsActive(sender) || _held == null) return;
             if (!IsFinite(worldPoint)) return;
             worldPoint = Vector3.ClampMagnitude(worldPoint - JengaTower.BaseCenter, 12f) + JengaTower.BaseCenter;
             CursorPoint.Value = worldPoint;
@@ -312,9 +329,11 @@ namespace SecretJenga.Game
         }
 
         [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
-        public void ReleaseServerRpc(RpcParams rpc = default)
+        public void ReleaseServerRpc(RpcParams rpc = default) => ServerRelease(rpc.Receive.SenderClientId);
+
+        public void ServerRelease(ulong sender)
         {
-            if (!IsActive(rpc) || Stage.Value != TurnStage.Dragging || _held == null) return;
+            if (!IsActive(sender) || Stage.Value != TurnStage.Dragging || _held == null) return;
             _held.ServerEndHold();
             _held = null;
             HeldBlockId.Value = 0;
@@ -322,21 +341,25 @@ namespace SecretJenga.Game
         }
 
         [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
-        public void PlaceServerRpc(int slot, RpcParams rpc = default)
+        public void PlaceServerRpc(int slot, RpcParams rpc = default) => ServerTryPlace(rpc.Receive.SenderClientId, slot);
+
+        public bool ServerTryPlace(ulong sender, int slot)
         {
-            if (!IsActive(rpc) || Stage.Value != TurnStage.Carrying || _held == null) return;
+            if (!IsActive(sender) || Stage.Value != TurnStage.Carrying || _held == null) return false;
             if (slot < 0 || slot > 2 || (FreeSlotMask.Value & (1 << slot)) == 0)
             {
-                SendPrivateMessage(rpc.Receive.SenderClientId, "That spot is taken. Place the block in a free slot on top.");
-                return;
+                SendPrivateMessage(sender, L.Msg("slot_taken"));
+                return false;
             }
             PlaceHeld(slot, false);
+            return true;
         }
 
         static bool IsFinite(Vector3 v) => !(float.IsNaN(v.x) || float.IsNaN(v.y) || float.IsNaN(v.z) || float.IsInfinity(v.x) || float.IsInfinity(v.y) || float.IsInfinity(v.z));
 
         public void SendPrivateMessage(ulong clientId, string msg)
         {
+            if (string.IsNullOrEmpty(msg) || _game.IsBot(clientId)) return;
             var p = new ClientRpcParams { Send = new ClientRpcSendParams { TargetClientIds = new[] { clientId } } };
             PrivateMessageClientRpc(new FixedString128Bytes(msg.Length > 120 ? msg.Substring(0, 120) : msg), p);
         }
@@ -344,7 +367,7 @@ namespace SecretJenga.Game
         [ClientRpc]
         void PrivateMessageClientRpc(FixedString128Bytes msg, ClientRpcParams rpcParams = default)
         {
-            PrivateMessage?.Invoke(msg.ToString());
+            PrivateMessage?.Invoke(L.Resolve(msg.ToString()));
             AudioManager.Instance?.Play(AudioManager.Sfx.Error);
         }
 
@@ -357,6 +380,8 @@ namespace SecretJenga.Game
 
             if (stage == TurnStage.Dragging || stage == TurnStage.Carrying || stage == TurnStage.Settling)
                 _peakWobble = Mathf.Max(_peakWobble, _game.Stability.RawWobble);
+
+            if (_bot != null && _bot.Active) _bot.Tick(dt);
 
             switch (stage)
             {
@@ -432,7 +457,7 @@ namespace SecretJenga.Game
             _held.ServerMoveCarried(target, Quaternion.Euler(0, PlaceRotY.Value, 0), dt);
         }
 
-        int FirstFreeSlot()
+        public int FirstFreeSlot()
         {
             int[] preference = { 1, 0, 2 };
             foreach (var s in preference) if ((FreeSlotMask.Value & (1 << s)) != 0) return s;
@@ -477,13 +502,13 @@ namespace SecretJenga.Game
                 SecondChanceArmed.Value = false;
                 double extra = Math.Max(5, _game.TurnSeconds.Value * _secondChanceDef.extraTimeFraction);
                 TurnEndTime.Value = _game.ServerNow + extra;
-                _game.Cards.ServerAnnounceEffect(ActiveClientId.Value, CardKind.SecondChance, $"Second Chance: {who} gets {extra:0} more seconds.");
+                _game.Cards.ServerAnnounceEffect(ActiveClientId.Value, CardKind.SecondChance, L.Msg("sc_time", who, extra.ToString("0")));
                 return;
             }
             _timedOut = true;
             if (Stage.Value == TurnStage.Carrying) PlaceHeld(FirstFreeSlot(), true);
             else FailTurn();
-            _game.ServerNotify($"{who} ran out of time.");
+            _game.ServerNotify(L.Msg("ran_out", who));
         }
 
         /// <summary>
@@ -509,7 +534,7 @@ namespace SecretJenga.Game
             HeldBlockId.Value = b.NetworkObjectId;
             if (TimerActive.Value) TurnEndTime.Value = Math.Max(TurnEndTime.Value, _game.ServerNow + 10);
             Stage.Value = TurnStage.Carrying;
-            _game.Cards.ServerAnnounceEffect(ActiveClientId.Value, CardKind.SecondChance, $"Second Chance: {_game.PlayerName(ActiveClientId.Value)} catches the falling block.");
+            _game.Cards.ServerAnnounceEffect(ActiveClientId.Value, CardKind.SecondChance, L.Msg("sc_catch", _game.PlayerName(ActiveClientId.Value)));
             return true;
         }
 
@@ -552,14 +577,10 @@ namespace SecretJenga.Game
                 MaxDisplacement = JengaTower.MaxDisplacement(_snapshot, _lastPlaced),
             };
             if (success) MovesCompleted.Value++;
-            else _game.ServerNotify($"{_game.PlayerName(report.ClientId)}'s turn does not count.");
+            else _game.ServerNotify(L.Msg("not_count", _game.PlayerName(report.ClientId)));
             _game.Tasks.ServerOnMove(report);
 
-            if (success && MovesCompleted.Value >= _game.RequiredTurns.Value)
-            {
-                _game.ServerEndGame(true, RoundEndReason.ObjectiveComplete, $"The group completed {MovesCompleted.Value} successful turns. The tower stands.");
-                return;
-            }
+            // No turn limit: the tower keeps growing until somebody drops it.
             NextTurn();
         }
     }

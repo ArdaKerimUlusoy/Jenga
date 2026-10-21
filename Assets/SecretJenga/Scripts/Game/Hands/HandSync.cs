@@ -5,6 +5,9 @@ using UnityEngine;
 
 namespace SecretJenga.Game
 {
+    /// <summary>Little left-hand gestures anyone can make at the table (number keys 1-6).</summary>
+    public enum Gesture : byte { None = 0, Ok = 1, ThumbsUp = 2, MiddleFinger = 3, Beer = 4, Wave = 5, Horns = 6 }
+
     /// <summary>One player's hand as seen by everyone (where its contact point is and what shape it makes).</summary>
     public struct HandNetState : INetworkSerializable
     {
@@ -35,6 +38,12 @@ namespace SecretJenga.Game
         public static readonly Dictionary<ulong, HandNetState> Hands = new Dictionary<ulong, HandNetState>();
         /// <summary>(clientId, position) - someone knocked on the table.</summary>
         public static event Action<ulong, Vector3> Knocked;
+        /// <summary>(clientId, gesture) - someone made a gesture with their left hand.</summary>
+        public static event Action<ulong, Gesture> GestureMade;
+
+        readonly Dictionary<ulong, float> _lastGesture = new Dictionary<ulong, float>();
+        readonly Dictionary<ulong, float> _botNextGesture = new Dictionary<ulong, float>();
+        static float _localGestureAt = -10f;
 
         readonly Dictionary<ulong, HandNetState> _server = new Dictionary<ulong, HandNetState>();
         readonly Dictionary<ulong, float> _lastKnock = new Dictionary<ulong, float>();
@@ -53,6 +62,79 @@ namespace SecretJenga.Game
             if (s._sendTimer > 0f) return;
             s._sendTimer = SendInterval;
             s.SubmitServerRpc(contact, (byte)pose);
+        }
+
+        /// <summary>Host only: publish a bot's hand (bots have no client to send it).</summary>
+        public static void ServerSetHand(ulong clientId, Vector3 contact, HandPoseId pose)
+        {
+            var s = _instance;
+            if (s == null || !s.IsSpawned || !s.IsServer) return;
+            s._server[clientId] = new HandNetState { ClientId = clientId, Contact = ClampToTable(contact), Pose = (byte)pose };
+        }
+
+        /// <summary>Host only: forget a bot's hand so it goes back to resting on the table.</summary>
+        public static void ServerClearHand(ulong clientId)
+        {
+            var s = _instance;
+            if (s == null || !s.IsSpawned || !s.IsServer) return;
+            s._server.Remove(clientId);
+        }
+
+        /// <summary>Local player makes a gesture: played at once here, and shared with the table.</summary>
+        public static void GestureLocal(Gesture g)
+        {
+            var s = _instance;
+            if (s == null || !s.IsSpawned || g == Gesture.None) return;
+            if (Time.time - _localGestureAt < GestureCooldown) return;
+            _localGestureAt = Time.time;
+            GestureMade?.Invoke(s.NetworkManager.LocalClientId, g);
+            s.GestureServerRpc((byte)g);
+        }
+
+        /// <summary>Host only: a bot makes a gesture.</summary>
+        public static void ServerBotGesture(ulong botId, Gesture g)
+        {
+            var s = _instance;
+            if (s == null || !s.IsSpawned || !s.IsServer) return;
+            s._lastGesture[botId] = Time.time;
+            s.GestureClientRpc(botId, (byte)g);
+        }
+
+        public const float GestureCooldown = 1.6f;
+
+        [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
+        void GestureServerRpc(byte gesture, RpcParams rpc = default)
+        {
+            ulong id = rpc.Receive.SenderClientId;
+            if (gesture == 0 || gesture > (byte)Gesture.Horns) return;
+            if (_lastGesture.TryGetValue(id, out var t) && Time.time - t < GestureCooldown - 0.2f) return;
+            _lastGesture[id] = Time.time;
+            GestureClientRpc(id, gesture);
+        }
+
+        [ClientRpc]
+        void GestureClientRpc(ulong clientId, byte gesture)
+        {
+            if (clientId == NetworkManager.LocalClientId) return; // already playing locally
+            GestureMade?.Invoke(clientId, (Gesture)gesture);
+        }
+
+        /// <summary>Bots are people too: now and then they sip their beer or show the table something.</summary>
+        void ServerBotGestures()
+        {
+            var game = NetworkGameManager.Instance;
+            if (game == null) return;
+            foreach (var p in game.Players)
+            {
+                if (!p.IsBot || !p.IsConnected) continue;
+                if (!_botNextGesture.TryGetValue(p.ClientId, out var next)) { _botNextGesture[p.ClientId] = Time.time + UnityEngine.Random.Range(6f, 20f); continue; }
+                if (Time.time < next) continue;
+                _botNextGesture[p.ClientId] = Time.time + UnityEngine.Random.Range(14f, 38f);
+                if (game.Turns != null && game.Turns.ActiveClientId.Value == p.ClientId && game.Phase.Value == GamePhase.Playing) continue; // busy
+                float r = UnityEngine.Random.value;
+                var g = r < 0.5f ? Gesture.Beer : r < 0.65f ? Gesture.Ok : r < 0.8f ? Gesture.ThumbsUp : r < 0.9f ? Gesture.Wave : r < 0.96f ? Gesture.Horns : Gesture.MiddleFinger;
+                ServerBotGesture(p.ClientId, g);
+            }
         }
 
         public static void KnockLocal(Vector3 at)
@@ -74,7 +156,7 @@ namespace SecretJenga.Game
         {
             if (float.IsNaN(contact.x) || float.IsNaN(contact.y) || float.IsNaN(contact.z)) return;
             ulong id = rpc.Receive.SenderClientId;
-            _server[id] = new HandNetState { ClientId = id, Contact = ClampToTable(contact), Pose = (byte)Mathf.Min(pose, (int)HandPoseId.Knock) };
+            _server[id] = new HandNetState { ClientId = id, Contact = ClampToTable(contact), Pose = (byte)Mathf.Min(pose, (int)HandPoseId.Horns) };
         }
 
         [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
@@ -92,6 +174,7 @@ namespace SecretJenga.Game
         void Update()
         {
             if (!IsSpawned || !IsServer) return;
+            ServerBotGestures();
             _broadcastTimer -= Time.deltaTime;
             if (_broadcastTimer > 0f || _server.Count == 0) return;
             _broadcastTimer = SendInterval;

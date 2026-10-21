@@ -19,7 +19,7 @@ namespace SecretJenga.UI
 
         class HostRefs
         {
-            public UIFactory.StepperRef MaxPlayers, Required, StartLayers, TurnTime;
+            public UIFactory.StepperRef MaxPlayers, StartLayers, TurnTime, Rounds;
             public Toggle Private;
         }
 
@@ -41,7 +41,7 @@ namespace SecretJenga.UI
             UIFactory.LE(title, 118 * scale);
             var rule = UIFactory.Image(parent, "Rule", UIFactory.StrokeSprite, Ink.RedBright, false);
             UIFactory.LE(rule, 12 * scale, 430 * scale);
-            var tag = UIFactory.Write(parent, FontKind.Body, "One tower. One table. Nobody breathes.", Mathf.RoundToInt(28 * scale), Ink.BoneDim, TextAnchor.MiddleLeft, FontStyle.Italic);
+            var tag = UIFactory.Write(parent, FontKind.Body, L.T("One tower. One saloon. Whoever drops it loses.", "Tek kule. Tek salon. Yıkan kaybeder."), Mathf.RoundToInt(28 * scale), Ink.BoneDim, TextAnchor.MiddleLeft, FontStyle.Italic);
             UIFactory.LE(tag, 44 * scale);
         }
 
@@ -49,8 +49,8 @@ namespace SecretJenga.UI
         (Button direct, Button online) ModeSwitch(Transform parent, System.Action<bool> onPick)
         {
             var row = UIFactory.ButtonRow(parent, 58, 50);
-            var d = UIFactory.Button(row, "Direct  (IP / LAN)", () => onPick(true), ButtonStyle.Secondary, 29);
-            var o = UIFactory.Button(row, "Online  (Relay)", () => onPick(false), ButtonStyle.Secondary, 29);
+            var d = UIFactory.Button(row, L.T("Direct  (IP / LAN)", "Doğrudan  (IP / LAN)"), () => onPick(true), ButtonStyle.Secondary, 29);
+            var o = UIFactory.Button(row, L.T("Online  (Relay)", "Çevrimiçi  (Relay)"), () => onPick(false), ButtonStyle.Secondary, 29);
             AddCircle(d);
             AddCircle(o);
             return (d, o);
@@ -86,7 +86,7 @@ namespace SecretJenga.UI
             UIFactory.Place(col, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(60, 20), new Vector2(900, 300));
             UIFactory.VLayout(col, 4, 0, TextAnchor.MiddleLeft);
             Logo(col, 1.15f);
-            var hint = UIFactory.Write(g.transform, FontKind.Type, "click to sit down", 20, Ink.BoneFaint, TextAnchor.MiddleCenter);
+            var hint = UIFactory.Write(g.transform, FontKind.Type, L.T("click to sit down", "oturmak için tıkla"), 20, Ink.BoneFaint, TextAnchor.MiddleCenter);
             UIFactory.Place(hint.rectTransform, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0, 70), new Vector2(600, 40));
             var btn = bg.gameObject.AddComponent<Button>();
             btn.transition = Selectable.Transition.None;
@@ -112,18 +112,29 @@ namespace SecretJenga.UI
             var nameRow = UIFactory.Rect("NameRow", col);
             UIFactory.LE(nameRow, 62);
             UIFactory.HLayout(nameRow, 18, 0, TextAnchor.LowerLeft, false);
-            UIFactory.LE(UIFactory.Write(nameRow, FontKind.Type, "name:", 24, Ink.BoneDim, TextAnchor.LowerLeft), 50, 92);
-            _nameInput = UIFactory.Input(nameRow, "write your name", GameSettings.PlayerName, 16, 30);
+            UIFactory.LE(UIFactory.Write(nameRow, FontKind.Type, L.T("name:", "isim:"), 24, Ink.BoneDim, TextAnchor.LowerLeft), 50, 92);
+            _nameInput = UIFactory.Input(nameRow, L.T("write your name", "adını yaz"), GameSettings.PlayerName, 16, 30);
             UIFactory.LE(_nameInput, 54, 380);
             _nameInput.onEndEdit.AddListener(v => GameSettings.PlayerName = v);
             UIFactory.LE(UIFactory.Rect("Gap", col), 26);
 
-            MenuItem(col, "Host a table", () => { SaveName(); PrepareHost(); ShowScreen(View.Host); });
-            MenuItem(col, "Join a table", () => { SaveName(); PrepareJoin(); ShowScreen(View.Join); });
-            _rejoinButton = MenuItem(col, "Return to your seat", OnRejoin);
-            MenuItem(col, "Settings", OpenSettings);
-            MenuItem(col, "Credits", () => ShowScreen(View.Credits));
-            MenuItem(col, "Leave", Quit, ButtonStyle.Ghost);
+            MenuItem(col, L.T("Play alone vs bots", "Botlara karşı tek oyna"), () => { SaveName(); StartSoloWithBots(); });
+            MenuItem(col, L.T("Host a table", "Masa kur"), () => { SaveName(); PrepareHost(); ShowScreen(View.Host); });
+            MenuItem(col, L.T("Join a table", "Masaya katıl"), () => { SaveName(); PrepareJoin(); ShowScreen(View.Join); });
+            _rejoinButton = MenuItem(col, L.T("Return to your seat", "Yerine dön"), OnRejoin);
+            MenuItem(col, L.T("Settings", "Ayarlar"), OpenSettings);
+            MenuItem(col, L.T("Credits", "Emeği geçenler"), () => ShowScreen(View.Credits));
+            MenuItem(col, L.T("Leave", "Çık"), Quit, ButtonStyle.Ghost);
+
+            // language switch, top right
+            var lang = UIFactory.Rect("Language", g.transform);
+            UIFactory.Place(lang, new Vector2(1, 1), new Vector2(1, 1), new Vector2(-40, -30), new Vector2(520, 60));
+            UIFactory.HLayout(lang, 26, 0, TextAnchor.MiddleRight, false);
+            var en = UIFactory.Button(lang, "English", () => L.Current = Language.English, ButtonStyle.Ghost, 28);
+            var tr = UIFactory.Button(lang, "Türkçe", () => L.Current = Language.Turkish, ButtonStyle.Ghost, 28);
+            AddCircle(en);
+            AddCircle(tr);
+            MarkMode(tr, en, L.TR);
 
             _footerText = UIFactory.Write(g.transform, FontKind.Type, "", 17, Ink.BoneFaint, TextAnchor.LowerRight);
             UIFactory.Place(_footerText.rectTransform, new Vector2(1, 0), new Vector2(1, 0), new Vector2(-40, 28), new Vector2(1200, 40));
@@ -144,10 +155,39 @@ namespace SecretJenga.UI
             var s = NetworkSessionManager.Instance;
             _rejoinButton.gameObject.SetActive(s != null && s.CanRejoin);
             var svc = MultiplayerServiceManager.Instance;
-            string online = string.IsNullOrEmpty(Application.cloudProjectId) ? "direct (IP) ready  -  online needs Unity Cloud linking"
-                : svc != null && svc.IsSignedIn ? "online ready"
-                : (svc != null && !string.IsNullOrEmpty(svc.LastError) ? "online unavailable - direct IP still works" : "reaching online services...");
+            string online = string.IsNullOrEmpty(Application.cloudProjectId) ? L.T("direct (IP) ready  -  online needs Unity Cloud linking", "doğrudan (IP) hazır  -  çevrimiçi için Unity Cloud bağlantısı gerekir")
+                : svc != null && svc.IsSignedIn ? L.T("online ready", "çevrimiçi hazır")
+                : (svc != null && !string.IsNullOrEmpty(svc.LastError) ? L.T("online unavailable - direct IP still works", "çevrimiçi yok - doğrudan IP çalışır") : L.T("reaching online services...", "çevrimiçi servislere bağlanılıyor..."));
             _footerText.text = $"{GameRules.BuildVersion}   /   {online}";
+        }
+
+        /// <summary>One click: open a private direct table on this PC and seat bots in every other chair.</summary>
+        async void StartSoloWithBots()
+        {
+            var session = NetworkSessionManager.Instance;
+            if (session == null) return;
+            _pendingBots = 2;
+            var s = new RoomSettings
+            {
+                roomName = L.T(GameSettings.PlayerName + "'s table", GameSettings.PlayerName + " masası"),
+                maxPlayers = GameRules.MaxPlayers,
+                startLayers = GameRules.DefaultStartLayers,
+                turnSeconds = GameRules.DefaultTurnSeconds,
+                isPrivate = true,
+                direct = true,
+                port = GameSettings.DirectPort,
+            };
+            await session.CreateRoomAsync(s);
+        }
+
+        /// <summary>Bots to seat as soon as our own table is up (Play alone vs bots).</summary>
+        int _pendingBots;
+
+        void SeatPendingBots()
+        {
+            if (_pendingBots <= 0 || _game == null || !_game.IsServer || _game.Phase.Value != GamePhase.Lobby) return;
+            while (_pendingBots > 0 && _game.ServerAddBot()) _pendingBots--;
+            _pendingBots = 0;
         }
 
         async void OnRejoin()
@@ -171,8 +211,8 @@ namespace SecretJenga.UI
         {
             var g = NewScreen(View.Host, "HostGame");
             var col = CenterCard(g, "Host", new Vector2(900, 1000));
-            UIFactory.Caption(col, "form 5  -  a table for the night");
-            UIFactory.Title(col, "Open a Table", 58);
+            UIFactory.Caption(col, L.T("form 5  -  a table for the night", "form 5  -  bu gecelik bir masa"));
+            UIFactory.Title(col, L.T("Open a Table", "Masa Kur"), 58);
             UIFactory.Divider(col);
             var modes = ModeSwitch(col, SetHostMode);
             _hostModeDirect = modes.direct;
@@ -180,42 +220,42 @@ namespace SecretJenga.UI
             _hostModeInfo = UIFactory.Write(col, FontKind.Body, "", 22, Ink.Faded, TextAnchor.UpperLeft, FontStyle.Italic);
             UIFactory.LE(_hostModeInfo, 60);
 
-            UIFactory.Caption(col, "name of the table");
-            _roomNameInput = UIFactory.Input(col, "a table with no name", "", 40, 30);
+            UIFactory.Caption(col, L.T("name of the table", "masanın adı"));
+            _roomNameInput = UIFactory.Input(col, L.T("a table with no name", "isimsiz masa"), "", 40, 30);
             UIFactory.LE(_roomNameInput, 52);
             UIFactory.LE(UIFactory.Rect("Gap", col), 8);
 
             _host = new HostRefs();
-            _host.MaxPlayers = UIFactory.Stepper(col, "Chairs", GameRules.MinPlayers, GameRules.MaxPlayers, GameRules.MaxPlayers, 1, v => v.ToString(), null);
-            _host.Required = UIFactory.Stepper(col, "Turns the tower must survive", GameRules.MinRequiredTurns, GameRules.MaxRequiredTurns, GameRules.DefaultRequiredTurns, 1, v => v.ToString(), null);
-            _host.StartLayers = UIFactory.Stepper(col, "Floors at the start", GameRules.MinStartLayers, GameRules.MaxStartLayers, GameRules.DefaultStartLayers, 1, v => v.ToString(), null);
-            _host.TurnTime = UIFactory.Stepper(col, "Time for each turn", 0, GameRules.MaxTurnSeconds, GameRules.DefaultTurnSeconds, 20, FormatTimer, null);
+            _host.MaxPlayers = UIFactory.Stepper(col, L.T("Chairs", "Sandalye"), GameRules.MinPlayers, GameRules.MaxPlayers, GameRules.MaxPlayers, 1, v => v.ToString(), null);
+            _host.StartLayers = UIFactory.Stepper(col, L.T("Floors at the start", "Başlangıç kat sayısı"), GameRules.MinStartLayers, GameRules.MaxStartLayers, GameRules.DefaultStartLayers, 1, v => v.ToString(), null);
+            _host.TurnTime = UIFactory.Stepper(col, L.T("Time for each turn", "Tur başına süre"), 0, GameRules.MaxTurnSeconds, GameRules.DefaultTurnSeconds, 20, FormatTimer, null);
+            _host.Rounds = UIFactory.Stepper(col, L.T("Rounds in a match", "Maçtaki el sayısı"), GameRules.MinMatchRounds, GameRules.MaxMatchRounds, GameRules.DefaultMatchRounds, 1, v => v.ToString(), null);
 
             var directRow = UIFactory.Rect("DirectOnly", col);
             UIFactory.LE(directRow, 52);
             UIFactory.HLayout(directRow, 14, 0, TextAnchor.LowerLeft, false);
-            UIFactory.LE(UIFactory.Write(directRow, FontKind.Body, "UDP port", 27, Ink.Black, TextAnchor.MiddleLeft), -1, -1, 1);
+            UIFactory.LE(UIFactory.Write(directRow, FontKind.Body, L.T("UDP port", "UDP portu"), 27, Ink.Black, TextAnchor.MiddleLeft), -1, -1, 1);
             _hostPortInput = UIFactory.Input(directRow, "7777", GameSettings.DirectPort.ToString(), 5, 28);
             _hostPortInput.contentType = InputField.ContentType.IntegerNumber;
             UIFactory.LE(_hostPortInput, 48, 170);
             _hostDirectOnly = directRow.gameObject;
 
-            _host.Private = UIFactory.Toggle(col, "Private - only those with the code", false, null);
+            _host.Private = UIFactory.Toggle(col, L.T("Private - only those with the code", "Özel - sadece kodu bilenler"), false, null);
             _hostOnlineOnly = _host.Private.gameObject;
 
             UIFactory.LE(UIFactory.Rect("Push", col), -1, -1, -1, 1);
             var row = UIFactory.ButtonRow(col, 70, 60);
-            UIFactory.Button(row, "back", () => ShowScreen(View.Main), ButtonStyle.Ghost, 30);
+            UIFactory.Button(row, L.T("back", "geri"), () => ShowScreen(View.Main), ButtonStyle.Ghost, 30);
             UIFactory.LE(UIFactory.Rect("Push", row), -1, -1, 1);
-            UIFactory.Button(row, "Open the table", OnHost, ButtonStyle.Primary, 40);
+            UIFactory.Button(row, L.T("Open the table", "Masayı aç"), OnHost, ButtonStyle.Primary, 40);
             UIFactory.OnPaper = false;
         }
 
-        static string FormatTimer(int v) => v <= 0 ? "none" : v + " s";
+        static string FormatTimer(int v) => v <= 0 ? L.T("none", "yok") : v + L.T(" s", " sn");
 
         void PrepareHost()
         {
-            if (string.IsNullOrWhiteSpace(_roomNameInput.text)) _roomNameInput.text = GameSettings.PlayerName + "'s table";
+            if (string.IsNullOrWhiteSpace(_roomNameInput.text)) _roomNameInput.text = L.T(GameSettings.PlayerName + "'s table", GameSettings.PlayerName + " masası");
             _hostPortInput.text = GameSettings.DirectPort.ToString();
             SetHostMode(GameSettings.UseDirectConnection);
         }
@@ -227,8 +267,10 @@ namespace SecretJenga.UI
             _hostDirectOnly.SetActive(direct);
             _hostOnlineOnly.SetActive(!direct);
             _hostModeInfo.text = direct
-                ? "Others sit down using this computer's address. Same network, same PC, or over the internet with a forwarded port / VPN."
-                : "Friends sit down with a room code through Unity Relay. The project must be linked to Unity Cloud.";
+                ? L.T("Others sit down using this computer's address. Same network, same PC, or over the internet with a forwarded port / VPN.",
+                      "Diğerleri bu bilgisayarın adresiyle oturur. Aynı ağ, aynı PC ya da port yönlendirme / VPN ile internetten.")
+                : L.T("Friends sit down with a room code through Unity Relay. The project must be linked to Unity Cloud.",
+                      "Arkadaşların Unity Relay üzerinden oda koduyla oturur. Proje Unity Cloud'a bağlı olmalı.");
         }
 
         async void OnHost()
@@ -238,9 +280,9 @@ namespace SecretJenga.UI
             {
                 roomName = _roomNameInput.text,
                 maxPlayers = _host.MaxPlayers.Value,
-                requiredTurns = _host.Required.Value,
                 startLayers = _host.StartLayers.Value,
                 turnSeconds = _host.TurnTime.Value,
+                matchRounds = _host.Rounds.Value,
                 isPrivate = _host.Private.isOn,
                 direct = GameSettings.UseDirectConnection,
                 port = port,
@@ -257,8 +299,8 @@ namespace SecretJenga.UI
         {
             var g = NewScreen(View.Join, "JoinGame");
             var col = CenterCard(g, "Join", new Vector2(860, 760));
-            UIFactory.Caption(col, "form 6  -  where is the table?");
-            UIFactory.Title(col, "Take a Seat", 58);
+            UIFactory.Caption(col, L.T("form 6  -  where is the table?", "form 6  -  masa nerede?"));
+            UIFactory.Title(col, L.T("Take a Seat", "Otur"), 58);
             UIFactory.Divider(col);
             var modes = ModeSwitch(col, SetJoinMode);
             _joinModeDirect = modes.direct;
@@ -270,7 +312,7 @@ namespace SecretJenga.UI
             var direct = UIFactory.Rect("Direct", col);
             UIFactory.VLayout(direct, 6, 0, TextAnchor.UpperLeft);
             UIFactory.LE(direct, 130);
-            UIFactory.Caption(direct, "address of the host  (shown in their lobby)");
+            UIFactory.Caption(direct, L.T("address of the host  (shown in their lobby)", "kurucunun adresi  (onun lobisinde yazar)"));
             var arow = UIFactory.Rect("AddrRow", direct);
             UIFactory.LE(arow, 70);
             UIFactory.HLayout(arow, 12, 0, TextAnchor.LowerLeft, false);
@@ -286,19 +328,19 @@ namespace SecretJenga.UI
             var online = UIFactory.Rect("Online", col);
             UIFactory.VLayout(online, 6, 0, TextAnchor.UpperLeft);
             UIFactory.LE(online, 130);
-            UIFactory.Caption(online, "room code");
-            _codeInput = UIFactory.Input(online, "six letters", "", 10, 46);
+            UIFactory.Caption(online, L.T("room code", "oda kodu"));
+            _codeInput = UIFactory.Input(online, L.T("six letters", "altı harf"), "", 10, 46);
             _codeInput.onValidateInput += (text, index, c) => char.IsLetterOrDigit(c) ? char.ToUpperInvariant(c) : '\0';
             UIFactory.LE(_codeInput, 66);
             var br = UIFactory.ButtonRow(online, 44);
-            UIFactory.Button(br, "or look for open tables", () => ShowScreen(View.Browser), ButtonStyle.Ghost, 24);
+            UIFactory.Button(br, L.T("or look for open tables", "ya da açık masalara bak"), () => ShowScreen(View.Browser), ButtonStyle.Ghost, 24);
             _joinOnlineOnly = online.gameObject;
 
             UIFactory.LE(UIFactory.Rect("Push", col), -1, -1, -1, 1);
             var row = UIFactory.ButtonRow(col, 70, 60);
-            UIFactory.Button(row, "back", () => ShowScreen(View.Main), ButtonStyle.Ghost, 30);
+            UIFactory.Button(row, L.T("back", "geri"), () => ShowScreen(View.Main), ButtonStyle.Ghost, 30);
             UIFactory.LE(UIFactory.Rect("Push", row), -1, -1, 1);
-            UIFactory.Button(row, "Sit down", OnJoin, ButtonStyle.Primary, 40);
+            UIFactory.Button(row, L.T("Sit down", "Otur"), OnJoin, ButtonStyle.Primary, 40);
             UIFactory.OnPaper = false;
         }
 
@@ -315,7 +357,7 @@ namespace SecretJenga.UI
             MarkMode(_joinModeDirect, _joinModeOnline, direct);
             _joinDirectOnly.SetActive(direct);
             _joinOnlineOnly.SetActive(!direct);
-            _joinModeInfo.text = direct ? "Same computer? Write 127.0.0.1" : "The code is written in the host's lobby.";
+            _joinModeInfo.text = direct ? L.T("Same computer? Write 127.0.0.1", "Aynı bilgisayar mı? 127.0.0.1 yaz") : L.T("The code is written in the host's lobby.", "Kod, kurucunun lobisinde yazar.");
         }
 
         async void OnJoin()
@@ -334,14 +376,14 @@ namespace SecretJenga.UI
             var header = UIFactory.Rect("Header", col);
             UIFactory.LE(header, 80);
             UIFactory.HLayout(header, 10, 0, TextAnchor.MiddleLeft, false);
-            var t = UIFactory.Write(header, FontKind.Title, "Open Tables", 58, Ink.Black, TextAnchor.MiddleLeft);
+            var t = UIFactory.Write(header, FontKind.Title, L.T("Open Tables", "Açık Masalar"), 58, Ink.Black, TextAnchor.MiddleLeft);
             UIFactory.LE(t, -1, -1, 1);
-            UIFactory.Button(header, "look again", RefreshBrowser, ButtonStyle.Secondary, 28);
+            UIFactory.Button(header, L.T("look again", "tekrar bak"), RefreshBrowser, ButtonStyle.Secondary, 28);
 
             var colHead = UIFactory.Rect("Columns", col);
             UIFactory.LE(colHead, 34);
             UIFactory.HLayout(colHead, 10, 0, TextAnchor.MiddleLeft, false);
-            foreach (var (label, w) in new[] { ("table", -1f), ("chairs", 160f), ("turns", 160f), ("", 160f) })
+            foreach (var (label, w) in new[] { (L.T("table", "masa"), -1f), (L.T("chairs", "sandalye"), 160f), ("", 160f) })
             {
                 var h = UIFactory.Write(colHead, FontKind.Type, label, 20, Ink.Faded, TextAnchor.MiddleLeft);
                 if (w < 0) UIFactory.LE(h, -1, -1, 1); else UIFactory.LE(h, -1, w);
@@ -373,7 +415,7 @@ namespace SecretJenga.UI
             _browserStatus = UIFactory.Write(col, FontKind.Body, "", 24, Ink.Faded, TextAnchor.MiddleLeft, FontStyle.Italic);
             UIFactory.LE(_browserStatus, 40);
             var row = UIFactory.ButtonRow(col, 64);
-            UIFactory.Button(row, "back", () => ShowScreen(View.Join), ButtonStyle.Ghost, 30);
+            UIFactory.Button(row, L.T("back", "geri"), () => ShowScreen(View.Join), ButtonStyle.Ghost, 30);
             UIFactory.OnPaper = false;
         }
 
@@ -382,7 +424,7 @@ namespace SecretJenga.UI
             if (_browserBusy) return;
             _browserBusy = true;
             foreach (Transform c in _browserList) Destroy(c.gameObject);
-            _browserStatus.text = "Looking for lit rooms...";
+            _browserStatus.text = L.T("Looking for lit rooms...", "Işığı yanan odalar aranıyor...");
             try
             {
                 await MultiplayerServiceManager.Instance.EnsureSignedInAsync();
@@ -390,7 +432,7 @@ namespace SecretJenga.UI
                 if (this == null) return;
                 foreach (Transform c in _browserList) Destroy(c.gameObject);
                 foreach (var l in lobbies) AddBrowserRow(l);
-                _browserStatus.text = lobbies.Count == 0 ? "Every room is dark tonight. Open a table yourself." : (lobbies.Count == 1 ? "One table is waiting." : $"{lobbies.Count} tables are waiting.");
+                _browserStatus.text = lobbies.Count == 0 ? L.T("Every room is dark tonight. Open a table yourself.", "Bu gece bütün odalar karanlık. Kendin bir masa kur.") : L.T(lobbies.Count == 1 ? "One table is waiting." : $"{lobbies.Count} tables are waiting.", $"{lobbies.Count} masa bekliyor.");
             }
             catch (System.Exception e)
             {
@@ -409,11 +451,8 @@ namespace SecretJenga.UI
             UIFactory.LE(name, -1, -1, 1);
             var players = UIFactory.Write(row, FontKind.Type, $"{l.Players.Count} / {l.MaxPlayers}", 24, Ink.Black, TextAnchor.MiddleLeft);
             UIFactory.LE(players, -1, 160);
-            string target = l.Data != null && l.Data.TryGetValue(LobbyManager.KeyTarget, out var d) ? d.Value : "-";
-            var tt = UIFactory.Write(row, FontKind.Type, target, 24, Ink.Black, TextAnchor.MiddleLeft);
-            UIFactory.LE(tt, -1, 160);
             string id = l.Id;
-            var join = UIFactory.Button(row, "sit here", async () =>
+            var join = UIFactory.Button(row, L.T("sit here", "buraya otur"), async () =>
             {
                 if (NetworkSessionManager.Instance != null) await NetworkSessionManager.Instance.JoinByIdAsync(id);
             }, ButtonStyle.Primary, 30);
@@ -426,19 +465,27 @@ namespace SecretJenga.UI
         {
             var g = NewScreen(View.Credits, "Credits");
             var col = CenterCard(g, "Credits", new Vector2(900, 780));
-            UIFactory.Title(col, "Credits", 58);
+            UIFactory.Title(col, L.T("Credits", "Emeği Geçenler"), 58);
             UIFactory.Divider(col);
-            var t = UIFactory.Write(col, FontKind.Type,
+            var t = UIFactory.Write(col, FontKind.Type, L.T(
                 "THE LAST BLOCK - a prototype.\n\n" +
-                "An online, first-person tabletop horror game\nabout one wooden tower and five chairs.\n\n" +
+                "An online, first-person tabletop game in an old\nfrontier saloon: one wooden tower, five chairs.\n\n" +
                 "Unity 6 / Netcode for GameObjects / Unity Transport\n(Unity Relay + Lobby optional).\n\n" +
-                "Models, textures and sounds are made by the project's own tools.\n" +
+                "Characters: Universal Animation Library by Quaternius (CC0),\ndressed as saloon patrons by the project's Blender script.\n" +
+                "Room, textures and sounds are made by the project's own tools.\n" +
                 "Type: IM Fell English (Igino Marini, OFL), Special Elite (Astigmatic, Apache 2.0).\n\n" +
-                "Jenga is a trademark of its owner. Non-commercial prototype.", 21, Ink.Black, TextAnchor.UpperLeft);
+                "Jenga is a trademark of its owner. Non-commercial prototype.",
+                "THE LAST BLOCK - bir prototip.\n\n" +
+                "Eski bir kovboy salonunda geçen, çevrimiçi, birinci şahıs\nbir masa oyunu: tek ahşap kule, beş sandalye.\n\n" +
+                "Unity 6 / Netcode for GameObjects / Unity Transport\n(Unity Relay + Lobby isteğe bağlı).\n\n" +
+                "Karakterler: Quaternius - Universal Animation Library (CC0),\nprojenin Blender betiğiyle salon müdavimi olarak giydirildi.\n" +
+                "Oda, dokular ve sesler projenin kendi araçlarıyla üretildi.\n" +
+                "Yazı tipleri: IM Fell English (Igino Marini, OFL), Special Elite (Astigmatic, Apache 2.0).\n\n" +
+                "Jenga, sahibinin ticari markasıdır. Ticari olmayan prototip."), 21, Ink.Black, TextAnchor.UpperLeft);
             UIFactory.LE(t, 440);
             UIFactory.LE(UIFactory.Rect("Push", col), -1, -1, -1, 1);
             var row = UIFactory.ButtonRow(col, 64);
-            UIFactory.Button(row, "back", () => ShowScreen(View.Main), ButtonStyle.Ghost, 30);
+            UIFactory.Button(row, L.T("back", "geri"), () => ShowScreen(View.Main), ButtonStyle.Ghost, 30);
             UIFactory.OnPaper = false;
         }
 
@@ -448,13 +495,13 @@ namespace SecretJenga.UI
             _pauseGroup = NewOverlay("Pause", 0.55f);
             var sheet = UIFactory.PaperSheet(_pauseGroup.transform, "SheetPause", new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(620, 560), -1.4f, 1, 60);
             var col = sheet.Body;
-            UIFactory.Title(col, "A moment", 54);
-            var note = UIFactory.Write(col, FontKind.Body, "The others are still at the table. The round does not wait.", 22, Ink.Faded, TextAnchor.UpperLeft, FontStyle.Italic);
+            UIFactory.Title(col, L.T("A moment", "Bir dakika"), 54);
+            var note = UIFactory.Write(col, FontKind.Body, L.T("The others are still at the table. The round does not wait.", "Diğerleri hâlâ masada. El seni beklemez."), 22, Ink.Faded, TextAnchor.UpperLeft, FontStyle.Italic);
             UIFactory.LE(note, 60);
             UIFactory.Divider(col);
-            UIFactory.LE(UIFactory.Button(col, "Back to the table", TogglePause, ButtonStyle.Primary, 40), 66);
-            UIFactory.LE(UIFactory.Button(col, "Settings", OpenSettings, ButtonStyle.Secondary, 32), 56);
-            UIFactory.LE(UIFactory.Button(col, "Get up and leave", () => { TogglePause(); LeaveRoom(); }, ButtonStyle.Danger, 34), 60);
+            UIFactory.LE(UIFactory.Button(col, L.T("Back to the table", "Masaya dön"), TogglePause, ButtonStyle.Primary, 40), 66);
+            UIFactory.LE(UIFactory.Button(col, L.T("Settings", "Ayarlar"), OpenSettings, ButtonStyle.Secondary, 32), 56);
+            UIFactory.LE(UIFactory.Button(col, L.T("Get up and leave", "Kalk ve git"), () => { TogglePause(); LeaveRoom(); }, ButtonStyle.Danger, 34), 60);
             UIFactory.OnPaper = false;
         }
 
@@ -484,35 +531,35 @@ namespace SecretJenga.UI
             var sheet = UIFactory.PaperSheet(_settingsGroup.transform, "SheetSettings", new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(940, 1010), 0.8f, 2, 64);
             var col = sheet.Body;
             col.GetComponent<VerticalLayoutGroup>().spacing = 8;
-            UIFactory.Title(col, "Settings", 56);
+            UIFactory.Title(col, L.T("Settings", "Ayarlar"), 56);
             UIFactory.Divider(col);
 
             var nameRow = UIFactory.Rect("NameRow", col);
             UIFactory.LE(nameRow, 54);
             UIFactory.HLayout(nameRow, 16, 0, TextAnchor.LowerLeft, false);
-            UIFactory.LE(UIFactory.Write(nameRow, FontKind.Body, "Your name", 27, Ink.Black, TextAnchor.MiddleLeft), -1, 300);
-            _settingsNameInput = UIFactory.Input(nameRow, "write your name", GameSettings.PlayerName, 16, 28);
+            UIFactory.LE(UIFactory.Write(nameRow, FontKind.Body, L.T("Your name", "Adın"), 27, Ink.Black, TextAnchor.MiddleLeft), -1, 300);
+            _settingsNameInput = UIFactory.Input(nameRow, L.T("write your name", "adını yaz"), GameSettings.PlayerName, 16, 28);
             UIFactory.LE(_settingsNameInput, 50, -1, 1);
             _settingsNameInput.onEndEdit.AddListener(v => { GameSettings.PlayerName = v; if (_nameInput != null) _nameInput.text = GameSettings.PlayerName; });
 
-            UIFactory.Caption(col, "sound");
-            UIFactory.Slider(col, "Everything", GameSettings.MasterVolume, v => GameSettings.MasterVolume = v);
-            UIFactory.Slider(col, "The room", GameSettings.MusicVolume, v => GameSettings.MusicVolume = v);
-            UIFactory.Slider(col, "Wood and hands", GameSettings.SfxVolume, v => GameSettings.SfxVolume = v);
-            UIFactory.Caption(col, "eyes");
-            UIFactory.Slider(col, "Look sensitivity", Mathf.InverseLerp(0.3f, 2f, GameSettings.MouseSensitivity), v => GameSettings.MouseSensitivity = Mathf.Lerp(0.3f, 2f, v));
+            UIFactory.Stepper(col, L.T("Language", "Dil"), 0, 1, (int)L.Current, 1, v => v == 1 ? "Türkçe" : "English", v => L.Current = (Language)v);
+            UIFactory.Caption(col, L.T("sound", "ses"));
+            UIFactory.Slider(col, L.T("Everything", "Genel"), GameSettings.MasterVolume, v => GameSettings.MasterVolume = v);
+            UIFactory.Slider(col, L.T("The room", "Ortam"), GameSettings.MusicVolume, v => GameSettings.MusicVolume = v);
+            UIFactory.Slider(col, L.T("Wood and hands", "Tahta ve eller"), GameSettings.SfxVolume, v => GameSettings.SfxVolume = v);
+            UIFactory.Slider(col, L.T("Look sensitivity", "Bakış hassasiyeti"), Mathf.InverseLerp(0.3f, 2f, GameSettings.MouseSensitivity), v => GameSettings.MouseSensitivity = Mathf.Lerp(0.3f, 2f, v));
 
             var names = QualitySettings.names;
-            UIFactory.Stepper(col, "Picture quality", 0, Mathf.Max(0, names.Length - 1), Mathf.Clamp(GameSettings.Quality, 0, Mathf.Max(0, names.Length - 1)), 1,
+            UIFactory.Stepper(col, L.T("Picture quality", "Görüntü kalitesi"), 0, Mathf.Max(0, names.Length - 1), Mathf.Clamp(GameSettings.Quality, 0, Mathf.Max(0, names.Length - 1)), 1,
                 v => names.Length > 0 ? names[v].ToLowerInvariant() : v.ToString(), v => { GameSettings.Quality = v; GameSettings.ApplyDisplay(); });
-            UIFactory.Toggle(col, "Fullscreen", GameSettings.Fullscreen, v => { GameSettings.Fullscreen = v; GameSettings.ApplyDisplay(); });
-            UIFactory.Caption(col, "for testing");
-            UIFactory.Toggle(col, "New identity every launch (two copies on one PC)", GameSettings.UniqueProfilePerLaunch, v => GameSettings.UniqueProfilePerLaunch = v);
-            UIFactory.Toggle(col, "Host may start alone (solo test)", GameSettings.AllowSoloStart, v => { GameSettings.AllowSoloStart = v; RefreshLobby(); });
+            UIFactory.Toggle(col, L.T("Fullscreen", "Tam ekran"), GameSettings.Fullscreen, v => { GameSettings.Fullscreen = v; GameSettings.ApplyDisplay(); });
+            UIFactory.Caption(col, L.T("for testing", "test için"));
+            UIFactory.Toggle(col, L.T("New identity every launch (two copies on one PC)", "Her açılışta yeni kimlik (tek PC'de iki kopya)"), GameSettings.UniqueProfilePerLaunch, v => GameSettings.UniqueProfilePerLaunch = v);
+            UIFactory.Toggle(col, L.T("Host may start alone (solo test)", "Kurucu yalnız başlatabilir (tek kişilik test)"), GameSettings.AllowSoloStart, v => { GameSettings.AllowSoloStart = v; RefreshLobby(); });
             UIFactory.LE(UIFactory.Rect("Push", col), -1, -1, -1, 1);
             var row = UIFactory.ButtonRow(col, 64);
             UIFactory.LE(UIFactory.Rect("Push", row), -1, -1, 1);
-            UIFactory.Button(row, "Done", CloseSettings, ButtonStyle.Primary, 40);
+            UIFactory.Button(row, L.T("Done", "Tamam"), CloseSettings, ButtonStyle.Primary, 40);
             UIFactory.OnPaper = false;
         }
 

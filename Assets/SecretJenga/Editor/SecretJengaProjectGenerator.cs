@@ -8,6 +8,7 @@ using Unity.Netcode;
 using Unity.Netcode.Components;
 using Unity.Netcode.Transports.UTP;
 using UnityEditor;
+using UnityEditor.Animations;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -24,7 +25,8 @@ namespace SecretJenga.EditorTools
     /// Creates (or refreshes - it is safe to run again) every generated asset of THE LAST BLOCK:
     /// texture/audio import settings, URP materials, procedural meshes, network prefabs, the NGO prefab list,
     /// task/card definition assets (existing ones are kept so designer edits survive), the asset registry,
-    /// the post-processing profile, the fully wired underground-room scene and the player/build settings.
+    /// the post-processing profile, the fully wired frontier-saloon scene (warm oil-lamp light, bar, piano, barrels,
+    /// wanted posters, a wagon-wheel chandelier over the table), the rigged cowboy character and the player/build settings.
     /// Obsolete assets from the old "Secret Jenga" living-room version are removed.
     /// </summary>
     public static class SecretJengaProjectGenerator
@@ -41,6 +43,8 @@ namespace SecretJenga.EditorTools
         const string Data = Root + "/Data";
         const string TaskDir = Data + "/Tasks";
         const string CardDir = Data + "/Cards";
+        const string CharDir = Models + "/Characters";
+        public const string CowboyPath = CharDir + "/TLB_Cowboy.fbx";
         public const string ScenePath = Scenes + "/TheLastBlock.unity";
         const string OldScenePath = Scenes + "/SecretJenga.unity";
 
@@ -54,6 +58,10 @@ namespace SecretJenga.EditorTools
             public VolumeProfile Volume;
             public TaskDefinition[] Tasks;
             public CardDefinition[] Cards;
+            public GameObject CowboyModel;
+            public RuntimeAnimatorController CowboyController;
+            public readonly List<Renderer> ExtraBulbs = new List<Renderer>();
+            public readonly List<Light> RoomLights = new List<Light>();
         }
 
         [MenuItem("Tools/The Last Block/Generate Project", priority = 0)]
@@ -77,7 +85,8 @@ namespace SecretJenga.EditorTools
                 Step("Meshes", 0.30f); CreateMeshes(ctx);
                 Step("Block prefab", 0.38f); CreateBlockPrefab(ctx);
                 Step("Session prefab", 0.44f); CreateSessionPrefab(ctx);
-                Step("Underground room", 0.52f); CreateEnvironmentPrefab(ctx);
+                Step("Saloon", 0.52f); CreateEnvironmentPrefab(ctx);
+                Step("Cowboy character", 0.56f); ImportCharacter(ctx);
                 Step("Network prefab list", 0.60f); CreatePrefabList(ctx);
                 Step("Tasks and cards", 0.64f); CreateContent(ctx);
                 Step("Asset registry", 0.68f); CreateRegistry(ctx);
@@ -98,7 +107,8 @@ namespace SecretJenga.EditorTools
             Debug.Log("[TheLastBlock] Project generated. Open " + ScenePath + " and press Play.");
             EditorUtility.DisplayDialog("The Last Block",
                 "Project generated!\n\nScene: " + ScenePath + " (opened and added to Build Settings).\n\n" +
-                "Quick test: Play > Host Game > Direct (IP) > Open the Table. A second player joins with Direct (IP) and 127.0.0.1 " +
+                "Quick test alone: Play > 'Play alone vs bots' (or Host a table > Begin after seating bots).\n" +
+                "Two players: Host a table > Direct (IP); the other joins with Direct (IP) and 127.0.0.1 " +
                 "(Multiplayer Play Mode or a second build). Online (Relay) mode needs Unity Cloud linking - see Assets/SecretJenga/README.md.", "OK");
         }
 
@@ -107,7 +117,7 @@ namespace SecretJenga.EditorTools
         // ------------------------------------------------------------------ Folders
         static void EnsureFolders()
         {
-            foreach (var f in new[] { Root, Root + "/Scripts", Root + "/Editor", Prefabs, Mats, Models, Scenes, Tex, UITex, Audio, Res, Data, TaskDir, CardDir })
+            foreach (var f in new[] { Root, Root + "/Scripts", Root + "/Editor", Prefabs, Mats, Models, CharDir, Scenes, Tex, UITex, Audio, Res, Data, TaskDir, CardDir })
                 EnsureFolder(f);
         }
 
@@ -290,6 +300,31 @@ namespace SecretJenga.EditorTools
             LitMat(ctx, "M_Bulb", new Color(1f, 0.9f, 0.7f), 0.9f, null, null, null, 0f, new Color(1f, 0.72f, 0.4f) * 8f);
             LitMat(ctx, "M_Door", new Color(0.13f, 0.12f, 0.11f), 0.3f, null, null, null, 0.75f);
 
+            // saloon
+            LitMat(ctx, "M_FloorPlanks", new Color(0.92f, 0.86f, 0.8f), 0.32f, T("T_Planks_Albedo.png"), T("T_Planks_Normal.png"), null, 0f, null, false, 0.8f);
+            LitMat(ctx, "M_WallBoards", new Color(0.95f, 0.88f, 0.82f), 0.3f, T("T_WallBoards_Albedo.png"), T("T_WallBoards_Normal.png"), null, 0f, null, false, 0.8f);
+            LitMat(ctx, "M_SaloonPaper", new Color(0.95f, 0.9f, 0.84f), 0.12f, T("T_SaloonPaper_Albedo.png"));
+            LitMat(ctx, "M_CeilingPlanks", new Color(0.55f, 0.46f, 0.4f), 0.15f, T("T_Planks_Albedo.png"), T("T_Planks_Normal.png"));
+            LitMat(ctx, "M_DarkWood", new Color(0.3f, 0.18f, 0.11f), 0.45f, T("T_WallBoards_Albedo.png"), T("T_WallBoards_Normal.png"), new Vector2(0.5f, 0.5f));
+            LitMat(ctx, "M_BarTop", new Color(0.42f, 0.24f, 0.14f), 0.72f, T("T_Planks_Albedo.png"), null, new Vector2(0.4f, 2f));
+            LitMat(ctx, "M_Brass", new Color(0.85f, 0.64f, 0.32f), 0.75f, null, null, null, 1f);
+            LitMat(ctx, "M_BlackIron", new Color(0.07f, 0.065f, 0.06f), 0.4f, null, null, null, 0.85f);
+            LitMat(ctx, "M_Mirror", new Color(0.22f, 0.2f, 0.18f), 0.96f, null, null, null, 1f);
+            LitMat(ctx, "M_BottleGreen", new Color(0.12f, 0.3f, 0.12f), 0.92f, null, null, null, 0.1f, new Color(0.02f, 0.05f, 0.02f));
+            LitMat(ctx, "M_BottleAmber", new Color(0.45f, 0.22f, 0.06f), 0.92f, null, null, null, 0.1f, new Color(0.08f, 0.035f, 0.01f));
+            LitMat(ctx, "M_BottleClear", new Color(0.7f, 0.66f, 0.55f), 0.95f, null, null, null, 0.1f);
+            LitMat(ctx, "M_PianoBlack", new Color(0.05f, 0.035f, 0.03f), 0.78f);
+            LitMat(ctx, "M_Ivory", new Color(0.86f, 0.82f, 0.72f), 0.6f);
+            LitMat(ctx, "M_Candle", new Color(0.92f, 0.88f, 0.78f), 0.3f);
+            LitMat(ctx, "M_Flame", new Color(1f, 0.8f, 0.45f), 0.2f, null, null, null, 0f, new Color(1f, 0.6f, 0.22f) * 6f);
+            LitMat(ctx, "M_LanternGlass", new Color(1f, 0.85f, 0.6f), 0.9f, null, null, null, 0f, new Color(1f, 0.62f, 0.3f) * 3.2f);
+            LitMat(ctx, "M_WindowDusk", Color.white, 0.6f, T("T_Window_Dusk.png"), null, null, 0f, Color.white * 1.6f);
+            var dusk = ctx.M["M_WindowDusk"];
+            dusk.SetTexture("_EmissionMap", T("T_Window_Dusk.png"));
+            EditorUtility.SetDirty(dusk);
+            foreach (var poster in new[] { "T_Poster_Wanted_0", "T_Poster_Wanted_1", "T_Poster_Wanted_2", "T_Poster_Whiskey" })
+                LitMat(ctx, "M_" + poster.Substring(2), Color.white, 0.1f, T(poster + ".png"));
+
             // characters (placeholders)
             LitMat(ctx, "M_Skin", new Color(0.70f, 0.58f, 0.52f), 0.38f);
             LitMat(ctx, "M_Cloth", new Color(0.19f, 0.17f, 0.155f), 0.12f);
@@ -338,8 +373,9 @@ namespace SecretJenga.EditorTools
             return mesh;
         }
 
-        const float RoomHalf = 36f;
-        const float CeilingY = 34f;
+        const float RoomHalf = 64f;     // the saloon is 6.4 m across
+        const float CeilingY = 46f;     // 3 m from floor to ceiling
+        const float WainscotH = 22f;    // boards up to 1.1 m, wallpaper above
 
         static void CreateMeshes(Ctx ctx)
         {
@@ -358,6 +394,39 @@ namespace SecretJenga.EditorTools
             SaveMesh(ctx, ProceduralMeshes.Cylinder(0.06f, CeilingY - SeatLayout.LampHeight, 8, "TLB_Cord"), "TLB_Cord");
             SaveMesh(ctx, ProceduralMeshes.Plane(RoomHalf * 2f, RoomHalf * 2f, RoomHalf * 2f / 22f, RoomHalf * 2f / 22f, "TLB_Floor"), "TLB_Floor");
             SaveMesh(ctx, ProceduralMeshes.BeveledBox(new Vector3(RoomHalf * 2f, wallH, 1f), 0.05f, false, new Vector2(24f, 24f), "TLB_Wall"), "TLB_Wall");
+            // saloon
+            SaveMesh(ctx, ProceduralMeshes.BeveledBox(new Vector3(RoomHalf * 2f, WainscotH, 1.2f), 0.05f, false, new Vector2(24f, 24f), "TLB_WallLow"), "TLB_WallLow");
+            SaveMesh(ctx, ProceduralMeshes.BeveledBox(new Vector3(RoomHalf * 2f, wallH - WainscotH, 1f), 0.05f, false, new Vector2(32f, 32f), "TLB_WallHigh"), "TLB_WallHigh");
+            SaveMesh(ctx, ProceduralMeshes.BeveledBox(new Vector3(RoomHalf * 2f, 1.2f, 2f), 0.2f, false, new Vector2(16f, 16f), "TLB_ChairRail"), "TLB_ChairRail");
+            SaveMesh(ctx, ProceduralMeshes.BeveledBox(new Vector3(RoomHalf * 2f, 2.6f, 2.6f), 0.25f, false, new Vector2(16f, 16f), "TLB_Beam"), "TLB_Beam");
+            SaveMesh(ctx, ProceduralMeshes.BeveledBox(new Vector3(72f, 22f, 9f), 0.3f, false, new Vector2(24f, 24f), "TLB_BarCounter"), "TLB_BarCounter");
+            SaveMesh(ctx, ProceduralMeshes.BeveledBox(new Vector3(75f, 1.3f, 12f), 0.4f, false, new Vector2(20f, 20f), "TLB_BarTop"), "TLB_BarTop");
+            SaveMesh(ctx, ProceduralMeshes.Pipe(0.45f, 70f), "TLB_FootRail");
+            SaveMesh(ctx, ProceduralMeshes.BeveledBox(new Vector3(62f, 0.9f, 4f), 0.12f, false, new Vector2(16f, 16f), "TLB_Shelf"), "TLB_Shelf");
+            SaveMesh(ctx, ProceduralMeshes.BeveledBox(new Vector3(66f, 30f, 1.4f), 0.2f, false, new Vector2(24f, 24f), "TLB_BackBar"), "TLB_BackBar");
+            SaveMesh(ctx, SaloonMeshes.Quad(46f, 12f, "TLB_MirrorQuad"), "TLB_MirrorQuad");
+            SaveMesh(ctx, SaloonMeshes.Barrel(), "TLB_Barrel");
+            SaveMesh(ctx, SaloonMeshes.BarrelHoops(), "TLB_BarrelHoops");
+            SaveMesh(ctx, SaloonMeshes.Bottle(1f, "TLB_Bottle"), "TLB_Bottle");
+            SaveMesh(ctx, SaloonMeshes.Bottle(0.8f, "TLB_BottleSmall"), "TLB_BottleSmall");
+            SaveMesh(ctx, SaloonMeshes.ShotGlass(), "TLB_ShotGlass");
+            SaveMesh(ctx, SaloonMeshes.WagonWheel(6.2f), "TLB_WagonWheel");
+            SaveMesh(ctx, SaloonMeshes.Candles(6.2f, 8), "TLB_Candles");
+            SaveMesh(ctx, SaloonMeshes.Flames(6.2f, 8), "TLB_Flames");
+            SaveMesh(ctx, ProceduralMeshes.Cylinder(0.12f, CeilingY - SeatLayout.LampHeight, 8, "TLB_Chain"), "TLB_Chain");
+            SaveMesh(ctx, SaloonMeshes.LanternFrame(), "TLB_LanternFrame");
+            SaveMesh(ctx, SaloonMeshes.LanternGlass(), "TLB_LanternGlass");
+            SaveMesh(ctx, SaloonMeshes.BatwingDoor(7.5f, 15f), "TLB_Batwing");
+            SaveMesh(ctx, SaloonMeshes.WindowFrame(15f, 21f), "TLB_WindowFrame");
+            SaveMesh(ctx, SaloonMeshes.Quad(15f, 21f, "TLB_WindowPane"), "TLB_WindowPane");
+            SaveMesh(ctx, SaloonMeshes.Quad(18f, 34f, "TLB_DoorOutside"), "TLB_DoorOutside");
+            SaveMesh(ctx, SaloonMeshes.PianoBody(), "TLB_Piano");
+            SaveMesh(ctx, SaloonMeshes.PianoKeys(), "TLB_PianoKeys");
+            SaveMesh(ctx, SaloonMeshes.SideTable(6f, 15f), "TLB_SideTable");
+            SaveMesh(ctx, SaloonMeshes.Quad(7.2f, 10.1f, "TLB_Poster"), "TLB_Poster");
+            SaveMesh(ctx, SaloonMeshes.Quad(36f, 13.5f, "TLB_Sign"), "TLB_Sign");
+            SaveMesh(ctx, ProceduralMeshes.BeveledBox(new Vector3(1.4f, 35f, 1.8f), 0.15f, false, new Vector2(8f, 8f), "TLB_DoorPost"), "TLB_DoorPost");
+            SaveMesh(ctx, ProceduralMeshes.BeveledBox(new Vector3(20.6f, 1.6f, 2f), 0.15f, false, new Vector2(8f, 8f), "TLB_DoorHeader"), "TLB_DoorHeader");
             SaveMesh(ctx, ProceduralMeshes.Pipe(0.7f, RoomHalf * 2f), "TLB_PipeLong");
             SaveMesh(ctx, ProceduralMeshes.Pipe(0.45f, RoomHalf * 2f), "TLB_PipeThin");
             SaveMesh(ctx, ProceduralMeshes.BeveledBox(new Vector3(14f, 26f, 0.8f), 0.15f, false, new Vector2(14f, 26f), "TLB_Door"), "TLB_Door");
@@ -442,9 +511,10 @@ namespace SecretJenga.EditorTools
         }
 
         /// <summary>
-        /// The isolated underground room: worn round table on an iron pedestal, five chairs, one hanging industrial
-        /// lamp, bare concrete, a few pipes and a shut steel door. Deliberately sparse - the tower is the focus.
-        /// (The lamp itself is created in the scene so its lights can be wired to the AtmosphereDirector.)
+        /// The old frontier saloon: plank floor, board-and-wallpaper walls, timber beams, a long bar with a mirror and
+        /// bottles, a whiskey sign, wanted posters, an upright piano, barrels, two side tables, dusk windows and
+        /// swinging batwing doors. The players' worn round table with five chairs stands in the middle.
+        /// (Lights - chandelier and wall lanterns - are created in the scene so they can be wired to the AtmosphereDirector.)
         /// </summary>
         static void CreateEnvironmentPrefab(Ctx ctx)
         {
@@ -453,8 +523,10 @@ namespace SecretJenga.EditorTools
             {
                 var M = ctx.M;
                 var me = ctx.Mesh;
-                float floorY = SeatLayout.FloorY;
-                float wallMid = (CeilingY + floorY) * 0.5f;
+                float F = SeatLayout.FloorY;
+                float wallH = CeilingY - F;
+                var rnd = new System.Random(1881);
+                float R(float a, float b) => a + (float)rnd.NextDouble() * (b - a);
 
                 // table (top surface at y = 0) - the top has a collider so blocks rest and fall on it
                 var table = new GameObject("Table").transform;
@@ -465,44 +537,202 @@ namespace SecretJenga.EditorTools
                 tableCol.transform.localPosition = new Vector3(0f, -0.3f, 0f); // 0.6 thick cylinder: top at y = 0
                 tableCol.AddComponent<MeshCollider>().sharedMesh = me["TLB_TableCollider"];
                 tableCol.isStatic = true;
-                Part(table, "Pedestal", me["TLB_TableBase"], M["M_TableIron"], new Vector3(0f, floorY, 0f), Vector3.zero);
+                Part(table, "Pedestal", me["TLB_TableBase"], M["M_TableIron"], new Vector3(0f, F, 0f), Vector3.zero);
 
                 // chairs
                 var chairs = new GameObject("Chairs").transform;
                 chairs.SetParent(root.transform, false);
-                var rnd = new System.Random(7);
                 for (int s = 0; s < SeatLayout.SeatCount; s++)
                 {
                     var c = Part(chairs, "Chair_" + (s + 1), me["TLB_Chair"], M["M_ChairWood"], SeatLayout.ChairPosition(s), Vector3.zero);
-                    c.transform.rotation = SeatLayout.Facing(s) * Quaternion.Euler(0f, (float)(rnd.NextDouble() - 0.5) * 6f, 0f);
+                    c.transform.rotation = SeatLayout.Facing(s) * Quaternion.Euler(0f, R(-3f, 3f), 0f);
                 }
 
-                // room shell
+                // ---------------- room shell
                 var room = new GameObject("Room").transform;
                 room.SetParent(root.transform, false);
-                var floor = Part(room, "Floor", me["TLB_Floor"], M["M_ConcreteFloor"], new Vector3(0, floorY, 0), Vector3.zero);
+                var floor = Part(room, "Floor", me["TLB_Floor"], M["M_FloorPlanks"], new Vector3(0, F, 0), Vector3.zero);
                 var fc = floor.AddComponent<BoxCollider>();
                 fc.size = new Vector3(RoomHalf * 2f, 0.2f, RoomHalf * 2f);
                 fc.center = new Vector3(0, -0.1f, 0);
-                Part(room, "Ceiling", me["TLB_Floor"], M["M_ConcreteCeiling"], new Vector3(0, CeilingY, 0), new Vector3(180, 0, 0), false);
-                Part(room, "WallN", me["TLB_Wall"], M["M_Concrete"], new Vector3(0, wallMid, RoomHalf), Vector3.zero);
-                Part(room, "WallS", me["TLB_Wall"], M["M_Concrete"], new Vector3(0, wallMid, -RoomHalf), Vector3.zero);
-                Part(room, "WallE", me["TLB_Wall"], M["M_Concrete"], new Vector3(RoomHalf, wallMid, 0), new Vector3(0, 90, 0));
-                Part(room, "WallW", me["TLB_Wall"], M["M_Concrete"], new Vector3(-RoomHalf, wallMid, 0), new Vector3(0, 90, 0));
+                Part(room, "Ceiling", me["TLB_Floor"], M["M_CeilingPlanks"], new Vector3(0, CeilingY, 0), new Vector3(180, 0, 0), false);
+                foreach (var z in new[] { -34f, 0f, 34f })
+                    Part(room, "Beam", me["TLB_Beam"], M["M_DarkWood"], new Vector3(0, CeilingY - 1.3f, z), Vector3.zero, false);
 
-                // a few pipes and a shut steel door - just enough to say "basement"
-                var details = new GameObject("Details").transform;
-                details.SetParent(room, false);
-                Part(details, "PipeCeilingA", me["TLB_PipeLong"], M["M_RustedSteel"], new Vector3(0, CeilingY - 2.2f, 14f), Vector3.zero);
-                Part(details, "PipeCeilingB", me["TLB_PipeThin"], M["M_RustedSteel"], new Vector3(0, CeilingY - 3.6f, 16f), Vector3.zero);
-                Part(details, "PipeWallE", me["TLB_PipeThin"], M["M_RustedSteel"], new Vector3(RoomHalf - 1.4f, floorY + 30f, 0f), new Vector3(0, 90, 0));
-                Part(details, "PipeWallE2", me["TLB_PipeThin"], M["M_RustedSteel"], new Vector3(RoomHalf - 1.4f, floorY + 27.8f, 0f), new Vector3(0, 90, 0));
-                Part(details, "DoorFrame", me["TLB_DoorFrame"], M["M_RustedSteel"], new Vector3(-12f, floorY + 14.25f, RoomHalf - 0.6f), Vector3.zero);
-                Part(details, "Door", me["TLB_Door"], M["M_Door"], new Vector3(-12f, floorY + 13f, RoomHalf - 1.0f), Vector3.zero);
+                float lowY = F + WainscotH * 0.5f, highY = F + WainscotH + (wallH - WainscotH) * 0.5f;
+                void Wall(string n, Vector3 at, float yRot, Vector3 inward)
+                {
+                    Part(room, n + "_Boards", me["TLB_WallLow"], M["M_WallBoards"], new Vector3(at.x, lowY, at.z), new Vector3(0, yRot, 0), false);
+                    Part(room, n + "_Paper", me["TLB_WallHigh"], M["M_SaloonPaper"], new Vector3(at.x, highY, at.z), new Vector3(0, yRot, 0), false);
+                    Part(room, n + "_Rail", me["TLB_ChairRail"], M["M_DarkWood"], new Vector3(at.x, F + WainscotH, at.z) + inward * 0.9f, new Vector3(0, yRot, 0), false);
+                }
+                Wall("WallN", new Vector3(0, 0, RoomHalf), 0f, Vector3.back);
+                Wall("WallS", new Vector3(0, 0, -RoomHalf), 0f, Vector3.forward);
+                Wall("WallE", new Vector3(RoomHalf, 0, 0), 90f, Vector3.left);
+                Wall("WallW", new Vector3(-RoomHalf, 0, 0), 90f, Vector3.right);
+
+                var props = new GameObject("Saloon").transform;
+                props.SetParent(root.transform, false);
+
+                // ---------------- the bar (north wall)
+                float barX = -8f, barZ = RoomHalf - 16f;
+                Part(props, "BarCounter", me["TLB_BarCounter"], M["M_DarkWood"], new Vector3(barX, F + 11f, barZ), Vector3.zero);
+                Part(props, "BarTop", me["TLB_BarTop"], M["M_BarTop"], new Vector3(barX, F + 22.65f, barZ - 0.5f), Vector3.zero);
+                Part(props, "FootRail", me["TLB_FootRail"], M["M_Brass"], new Vector3(barX, F + 2.6f, barZ - 5.8f), Vector3.zero);
+                Part(props, "BackBar", me["TLB_BackBar"], M["M_DarkWood"], new Vector3(barX, F + 30f, RoomHalf - 1.4f), Vector3.zero);
+                Part(props, "Mirror", me["TLB_MirrorQuad"], M["M_Mirror"], new Vector3(barX, F + 38f, RoomHalf - 2.15f), Vector3.zero, false);
+                Part(props, "SaloonSign", me["TLB_Sign"], M["M_Poster_Whiskey"], new Vector3(barX, F + 52f, RoomHalf - 2.2f), Vector3.zero, false);
+                string[] bottleMats = { "M_BottleGreen", "M_BottleAmber", "M_BottleClear", "M_BottleAmber" };
+                foreach (var shelfY in new[] { F + 22.6f, F + 28.4f })
+                {
+                    Part(props, "Shelf", me["TLB_Shelf"], M["M_DarkWood"], new Vector3(barX, shelfY, RoomHalf - 4.1f), Vector3.zero);
+                    for (float x = barX - 29f; x < barX + 29f; x += R(2.2f, 4.2f))
+                        Part(props, "Bottle", me[rnd.NextDouble() < 0.6 ? "TLB_Bottle" : "TLB_BottleSmall"], M[bottleMats[rnd.Next(bottleMats.Length)]],
+                            new Vector3(x, shelfY + 0.45f, RoomHalf - 4.1f + R(-0.8f, 0.8f)), new Vector3(0, R(0, 360), 0));
+                }
+                for (int i = 0; i < 5; i++)
+                {
+                    float x = barX + R(-30f, 30f);
+                    Part(props, "BarBottle", me["TLB_Bottle"], M[bottleMats[rnd.Next(bottleMats.Length)]], new Vector3(x, F + 23.3f, barZ + R(-2.5f, 1.5f)), new Vector3(0, R(0, 360), 0));
+                    Part(props, "ShotGlass", me["TLB_ShotGlass"], M["M_BottleClear"], new Vector3(x + R(1.4f, 2.6f), F + 23.3f, barZ + R(-3.5f, -1.5f)), Vector3.zero);
+                }
+
+                // ---------------- wanted posters
+                var posters = new[]
+                {
+                    ("M_Poster_Wanted_0", new Vector3(-RoomHalf + 0.62f, F + 33f, 40f), -90f),
+                    ("M_Poster_Wanted_1", new Vector3(RoomHalf - 0.62f, F + 34f, 28f), 90f),
+                    ("M_Poster_Wanted_2", new Vector3(-6f, F + 33f, -RoomHalf + 0.62f), 180f),
+                    ("M_Poster_Wanted_0", new Vector3(RoomHalf - 0.62f, F + 32f, -8f), 90f),
+                };
+                foreach (var (mat, pos, rot) in posters)
+                    Part(props, "Poster", me["TLB_Poster"], M[mat], pos, new Vector3(0, rot, R(-4f, 4f)), false);
+
+                // ---------------- dusk windows (west wall)
+                foreach (var z in new[] { -24f, 20f })
+                {
+                    Part(props, "WindowFrame", me["TLB_WindowFrame"], M["M_DarkWood"], new Vector3(-RoomHalf + 1.0f, F + 33f, z), new Vector3(0, -90, 0));
+                    Part(props, "WindowPane", me["TLB_WindowPane"], M["M_WindowDusk"], new Vector3(-RoomHalf + 0.66f, F + 33f, z), new Vector3(0, -90, 0), false);
+                }
+
+                // ---------------- swinging batwing doors (south wall) with the dusk street behind
+                float doorX = 24f, doorZ = -RoomHalf + 1.6f;
+                Part(props, "DoorOutside", me["TLB_DoorOutside"], M["M_WindowDusk"], new Vector3(doorX, F + 17f, -RoomHalf + 0.66f), new Vector3(0, 180, 0), false);
+                Part(props, "DoorPostL", me["TLB_DoorPost"], M["M_DarkWood"], new Vector3(doorX - 9.6f, F + 17.5f, doorZ - 0.4f), Vector3.zero);
+                Part(props, "DoorPostR", me["TLB_DoorPost"], M["M_DarkWood"], new Vector3(doorX + 9.6f, F + 17.5f, doorZ - 0.4f), Vector3.zero);
+                Part(props, "DoorHeader", me["TLB_DoorHeader"], M["M_DarkWood"], new Vector3(doorX, F + 35f, doorZ - 0.4f), Vector3.zero);
+                Part(props, "BatwingL", me["TLB_Batwing"], M["M_DarkWood"], new Vector3(doorX - 7.6f, F + 9f, doorZ), new Vector3(0, -10f, 0));
+                Part(props, "BatwingR", me["TLB_Batwing"], M["M_DarkWood"], new Vector3(doorX + 7.6f, F + 9f, doorZ), new Vector3(0, 190f, 0));
+
+                // ---------------- upright piano (east wall)
+                var piano = new GameObject("Piano").transform;
+                piano.SetParent(props, false);
+                piano.localPosition = new Vector3(RoomHalf - 6.6f, F, -30f);
+                piano.localEulerAngles = new Vector3(0, 90, 0);
+                Part(piano, "Body", me["TLB_Piano"], M["M_PianoBlack"], Vector3.zero, Vector3.zero);
+                Part(piano, "Keys", me["TLB_PianoKeys"], M["M_Ivory"], new Vector3(0, 14.85f, -8.2f), Vector3.zero);
+                Part(piano, "Stool", me["TLB_Barrel"], M["M_DarkWood"], new Vector3(0, 0, -17f), Vector3.zero).transform.localScale = new Vector3(0.6f, 0.7f, 0.6f);
+                Part(piano, "Bottle", me["TLB_Bottle"], M["M_BottleGreen"], new Vector3(10f, 26f, 0f), Vector3.zero);
+
+                // ---------------- barrels
+                foreach (var b in new[] { new Vector3(50f, 0, 50f), new Vector3(57f, 0, 41f), new Vector3(44.5f, 0, 57.5f), new Vector3(-52f, 0, -51f), new Vector3(-44f, 0, -56.5f), new Vector3(-56.5f, 0, -42f) })
+                {
+                    var at = new Vector3(b.x, F, b.z);
+                    var rot = new Vector3(0, R(0, 360), 0);
+                    Part(props, "Barrel", me["TLB_Barrel"], M["M_ChairWood"], at, rot);
+                    Part(props, "Hoops", me["TLB_BarrelHoops"], M["M_BlackIron"], at, rot);
+                }
+
+                // ---------------- two side tables where nobody sits tonight
+                foreach (var t in new[] { new Vector3(-40f, 0, -30f), new Vector3(40f, 0, 12f) })
+                {
+                    var at = new Vector3(t.x, F, t.z);
+                    Part(props, "SideTable", me["TLB_SideTable"], M["M_TableWorn"], at, Vector3.zero);
+                    for (int k = 0; k < 3; k++)
+                    {
+                        float a = (k * 120f + R(-20f, 20f) + t.x) * Mathf.Deg2Rad;
+                        var dir = new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a));
+                        var ch = Part(props, "SideChair", me["TLB_Chair"], M["M_ChairWood"], at + dir * 8.5f, Vector3.zero);
+                        ch.transform.rotation = Quaternion.LookRotation(-dir, Vector3.up) * Quaternion.Euler(0, R(-15f, 15f), 0);
+                    }
+                    Part(props, "Bottle", me["TLB_Bottle"], M[bottleMats[rnd.Next(bottleMats.Length)]], at + new Vector3(R(-2f, 2f), 15f, R(-2f, 2f)), Vector3.zero);
+                    Part(props, "Glass", me["TLB_ShotGlass"], M["M_BottleClear"], at + new Vector3(R(-3f, 3f), 15f, R(-3f, 3f)), Vector3.zero);
+                    Part(props, "Glass", me["TLB_ShotGlass"], M["M_BottleClear"], at + new Vector3(R(-3f, 3f), 15f, R(-3f, 3f)), Vector3.zero);
+                }
 
                 ctx.EnvPrefab = PrefabUtility.SaveAsPrefabAsset(root, Prefabs + "/TLB_Room.prefab");
             }
             finally { Object.DestroyImmediate(root); }
+        }
+
+        /// <summary>Wall-mounted oil lantern with its own warm point light (created in the scene, wired to the AtmosphereDirector).</summary>
+        static void Lantern(Ctx ctx, Transform parent, Vector3 pos, float yRot)
+        {
+            var t = new GameObject("WallLantern").transform;
+            t.SetParent(parent, false);
+            t.localPosition = pos;
+            t.localEulerAngles = new Vector3(0, yRot, 0);
+            Part(t, "Frame", ctx.Mesh["TLB_LanternFrame"], ctx.M["M_BlackIron"], Vector3.zero, Vector3.zero);
+            var glass = Part(t, "Glass", ctx.Mesh["TLB_LanternGlass"], ctx.M["M_LanternGlass"], Vector3.zero, Vector3.zero, false);
+            glass.isStatic = false;
+            ctx.ExtraBulbs.Add(glass.GetComponent<MeshRenderer>());
+            var l = new GameObject("Lantern Light").AddComponent<Light>();
+            l.transform.SetParent(t, false);
+            l.transform.localPosition = new Vector3(0f, 0f, 3.4f);
+            l.type = LightType.Point;
+            l.color = new Color(1f, 0.66f, 0.36f);
+            l.intensity = 11f;
+            l.range = 34f;
+            l.shadows = LightShadows.None;
+            ctx.RoomLights.Add(l);
+        }
+
+        // ------------------------------------------------------------------ Character (Quaternius UAL mannequin, CC0)
+        /// <summary>
+        /// Imports TLB_Cowboy.fbx as a Generic rig, makes the seated clips loop and builds an Animator Controller with
+        /// one state per clip (state name = clip name). Skipped with a warning if the model is not in the project.
+        /// </summary>
+        static void ImportCharacter(Ctx ctx)
+        {
+            var mi = AssetImporter.GetAtPath(CowboyPath) as ModelImporter;
+            if (mi == null)
+            {
+                Debug.LogWarning("[TheLastBlock] " + CowboyPath + " not found - players use the simple hooded bodies. (Build it with Tools~/blender_build_cowboy.py.)");
+                return;
+            }
+            mi.animationType = ModelImporterAnimationType.Generic;
+            mi.importAnimation = true;
+            mi.optimizeGameObjects = false;
+            mi.importBlendShapes = false;
+            mi.SaveAndReimport();
+            var clips = mi.defaultClipAnimations;
+            foreach (var c in clips)
+            {
+                int bar = c.name.LastIndexOf('|');
+                if (bar >= 0) c.name = c.name.Substring(bar + 1);
+                c.loopTime = c.name.Contains("Loop");
+                c.lockRootRotation = c.lockRootHeightY = c.lockRootPositionXZ = true;
+                c.keepOriginalOrientation = c.keepOriginalPositionY = c.keepOriginalPositionXZ = true;
+            }
+            mi.clipAnimations = clips;
+            mi.SaveAndReimport();
+
+            var ctrlPath = CharDir + "/TLB_Cowboy.controller";
+            if (AssetDatabase.LoadAssetAtPath<AnimatorController>(ctrlPath) != null) AssetDatabase.DeleteAsset(ctrlPath);
+            var ctrl = AnimatorController.CreateAnimatorControllerAtPath(ctrlPath);
+            var sm = ctrl.layers[0].stateMachine;
+            int n = 0;
+            foreach (var o in AssetDatabase.LoadAllAssetsAtPath(CowboyPath))
+            {
+                if (!(o is AnimationClip clip) || clip.name.StartsWith("__preview")) continue;
+                var st = sm.AddState(clip.name, new Vector3(260, 60 * n++, 0));
+                st.motion = clip;
+                if (clip.name == "Sitting_Idle_Loop") sm.defaultState = st;
+            }
+            EditorUtility.SetDirty(ctrl);
+            ctx.CowboyModel = AssetDatabase.LoadAssetAtPath<GameObject>(CowboyPath);
+            ctx.CowboyController = ctrl;
+            Debug.Log($"[TheLastBlock] Cowboy character imported with {n} animation clip(s).");
         }
 
         static void CreatePrefabList(Ctx ctx)
@@ -571,6 +801,8 @@ namespace SecretJenga.EditorTools
             r.skinMaterial = ctx.M["M_Skin"];
             r.clothMaterial = ctx.M["M_Cloth"];
             r.hoodMaterial = ctx.M["M_Hood"];
+            r.cowboyModel = ctx.CowboyModel;
+            r.cowboyAnimator = ctx.CowboyController;
 
             r.panel = S("UI_Panel"); r.button = S("UI_Button"); r.rounded = S("UI_Rounded"); r.pill = S("UI_Pill");
             r.circle = S("UI_Circle"); r.glow = S("UI_Glow"); r.card = S("UI_Card"); r.vignette = S("UI_Vignette");
@@ -622,25 +854,32 @@ namespace SecretJenga.EditorTools
 
             var tone = profile.Add<Tonemapping>(true);
             tone.mode.Override(TonemappingMode.ACES);
+            // warm, golden oil-lamp evening in a frontier saloon: bright enough to read every face and block
             var bloom = profile.Add<Bloom>(true);
-            bloom.intensity.Override(0.55f);
-            bloom.threshold.Override(1.1f);
-            bloom.scatter.Override(0.6f);
+            bloom.intensity.Override(0.75f);
+            bloom.threshold.Override(0.95f);
+            bloom.scatter.Override(0.65f);
+            bloom.tint.Override(new Color(1f, 0.85f, 0.65f));
             var vig = profile.Add<Vignette>(true);
-            vig.intensity.Override(0.32f);
-            vig.smoothness.Override(0.5f);
-            vig.color.Override(Color.black);
+            vig.intensity.Override(0.2f);
+            vig.smoothness.Override(0.45f);
+            vig.color.Override(new Color(0.08f, 0.04f, 0.02f));
             var ca = profile.Add<ColorAdjustments>(true);
-            ca.postExposure.Override(0.65f);
-            ca.contrast.Override(18f);
-            ca.saturation.Override(-16f);
-            ca.colorFilter.Override(new Color(1f, 0.95f, 0.88f));
+            ca.postExposure.Override(0.55f);
+            ca.contrast.Override(10f);
+            ca.saturation.Override(6f);
+            ca.colorFilter.Override(new Color(1f, 0.94f, 0.84f));
+            var wb = profile.Add<WhiteBalance>(true);
+            wb.temperature.Override(12f);
+            wb.tint.Override(3f);
+            var lgg = profile.Add<LiftGammaGain>(true);
+            lgg.lift.Override(new Vector4(1f, 0.97f, 0.92f, 0.02f));
             var grain = profile.Add<FilmGrain>(true);
-            grain.type.Override(FilmGrainLookup.Medium2);
-            grain.intensity.Override(0.28f);
-            grain.response.Override(0.75f);
+            grain.type.Override(FilmGrainLookup.Thin1);
+            grain.intensity.Override(0.12f);
+            grain.response.Override(0.8f);
             var chroma = profile.Add<ChromaticAberration>(true);
-            chroma.intensity.Override(0.08f);
+            chroma.intensity.Override(0.03f);
 
             foreach (var c in profile.components)
             {
@@ -657,15 +896,16 @@ namespace SecretJenga.EditorTools
         {
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
-            // lighting / atmosphere: dim but readable - you must see the faces and hands around the table; the far walls fade
+            // lighting: a warm frontier saloon at dusk - oil lamps, candles on a wagon wheel, low sun through the windows.
+            // Bright and golden; only the far corners fall into amber haze.
             RenderSettings.ambientMode = AmbientMode.Trilight;
-            RenderSettings.ambientSkyColor = new Color(0.12f, 0.11f, 0.10f);
-            RenderSettings.ambientEquatorColor = new Color(0.085f, 0.075f, 0.068f);
-            RenderSettings.ambientGroundColor = new Color(0.03f, 0.027f, 0.024f);
+            RenderSettings.ambientSkyColor = new Color(0.34f, 0.25f, 0.17f);
+            RenderSettings.ambientEquatorColor = new Color(0.26f, 0.18f, 0.12f);
+            RenderSettings.ambientGroundColor = new Color(0.11f, 0.075f, 0.05f);
             RenderSettings.fog = true;
             RenderSettings.fogMode = FogMode.Exponential;
-            RenderSettings.fogDensity = 0.011f;
-            RenderSettings.fogColor = new Color(0.03f, 0.027f, 0.024f);
+            RenderSettings.fogDensity = 0.0045f;
+            RenderSettings.fogColor = new Color(0.24f, 0.15f, 0.09f);
             RenderSettings.skybox = null;
             var lighting = new LightingSettings { name = "TLB_Lighting", bakedGI = false, realtimeGI = false };
             var lightingPath = Scenes + "/TLB_Lighting.lighting";
@@ -680,9 +920,9 @@ namespace SecretJenga.EditorTools
             var cam = camGo.AddComponent<Camera>();
             cam.fieldOfView = 58f;
             cam.nearClipPlane = 0.05f;
-            cam.farClipPlane = 160f;
+            cam.farClipPlane = 240f;
             cam.clearFlags = CameraClearFlags.SolidColor;
-            cam.backgroundColor = Color.black;
+            cam.backgroundColor = new Color(0.12f, 0.07f, 0.04f);
             camGo.AddComponent<AudioListener>();
             camGo.AddComponent<CameraController>();
             camGo.transform.position = SeatLayout.EyePosition(0);
@@ -696,44 +936,57 @@ namespace SecretJenga.EditorTools
             var env = (GameObject)PrefabUtility.InstantiatePrefab(ctx.EnvPrefab, scene);
             env.name = "Room";
 
-            // the hanging lamp: rig swings (AtmosphereDirector), lights are children so the light swings with it
+            // the wagon-wheel chandelier over the table: rig swings (AtmosphereDirector), lights are children
             var lampRig = new GameObject("LampRig").transform;
             lampRig.position = new Vector3(0f, SeatLayout.LampHeight, 0f);
-            var cordGo = Part(lampRig, "Cord", ctx.Mesh["TLB_Cord"], ctx.M["M_RustedSteel"], new Vector3(0f, (CeilingY - SeatLayout.LampHeight) * 0.5f, 0f), Vector3.zero, false);
-            var shade = Part(lampRig, "Shade", ctx.Mesh["TLB_Shade"], ctx.M["M_LampEnamel"], Vector3.zero, Vector3.zero);
-            var bulb = Part(lampRig, "Bulb", ctx.Mesh["TLB_Bulb"], ctx.M["M_Bulb"], new Vector3(0f, -0.75f, 0f), Vector3.zero, false);
-            cordGo.isStatic = shade.isStatic = bulb.isStatic = false;
+            var chain = Part(lampRig, "Chain", ctx.Mesh["TLB_Chain"], ctx.M["M_BlackIron"], new Vector3(0f, (CeilingY - SeatLayout.LampHeight) * 0.5f, 0f), Vector3.zero, false);
+            var wheel = Part(lampRig, "WagonWheel", ctx.Mesh["TLB_WagonWheel"], ctx.M["M_DarkWood"], Vector3.zero, Vector3.zero);
+            var candles = Part(lampRig, "Candles", ctx.Mesh["TLB_Candles"], ctx.M["M_Candle"], Vector3.zero, Vector3.zero, false);
+            var bulb = Part(lampRig, "Flames", ctx.Mesh["TLB_Flames"], ctx.M["M_Flame"], Vector3.zero, Vector3.zero, false);
+            chain.isStatic = wheel.isStatic = candles.isStatic = bulb.isStatic = false;
 
             var spot = new GameObject("Lamp Spot Light").AddComponent<Light>();
             spot.transform.SetParent(lampRig, false);
-            spot.transform.localPosition = new Vector3(0f, -0.9f, 0f);
+            spot.transform.localPosition = new Vector3(0f, -1.2f, 0f);
             spot.transform.localRotation = Quaternion.Euler(90, 0, 0);
             spot.type = LightType.Spot;
-            spot.color = new Color(1f, 0.8f, 0.58f);
-            spot.intensity = 150f;
-            spot.range = 48f;
-            spot.spotAngle = 128f;
-            spot.innerSpotAngle = 70f;
+            spot.color = new Color(1f, 0.78f, 0.52f);
+            spot.intensity = 420f;
+            spot.range = 80f;
+            spot.spotAngle = 120f;
+            spot.innerSpotAngle = 60f;
             spot.shadows = LightShadows.Soft;
-            spot.shadowStrength = 0.95f;
+            spot.shadowStrength = 0.85f;
             spot.shadowBias = 0.02f;
             spot.shadowNormalBias = 0.3f;
 
             var glow = new GameObject("Bulb Glow").AddComponent<Light>();
             glow.transform.SetParent(lampRig, false);
-            glow.transform.localPosition = new Vector3(0f, -0.4f, 0f);
+            glow.transform.localPosition = new Vector3(0f, 2.2f, 0f);
             glow.type = LightType.Point;
-            glow.color = new Color(1f, 0.74f, 0.45f);
-            glow.intensity = 42f;
-            glow.range = 36f;
+            glow.color = new Color(1f, 0.7f, 0.4f);
+            glow.intensity = 70f;
+            glow.range = 70f;
             glow.shadows = LightShadows.None;
 
-            var rim = new GameObject("Cold Rim (far door)").AddComponent<Light>();
-            rim.type = LightType.Directional;
-            rim.transform.rotation = Quaternion.Euler(18, 200, 0);
-            rim.color = new Color(0.45f, 0.55f, 0.75f);
-            rim.intensity = 0.16f;
-            rim.shadows = LightShadows.None;
+            // oil lanterns around the walls
+            var lanterns = new GameObject("Wall Lanterns").transform;
+            float ly = SeatLayout.FloorY + 34f;
+            Lantern(ctx, lanterns, new Vector3(-RoomHalf + 0.8f, ly, -2f), 90f);
+            Lantern(ctx, lanterns, new Vector3(RoomHalf - 0.8f, ly, 12f), -90f);
+            Lantern(ctx, lanterns, new Vector3(RoomHalf - 0.8f, ly, -48f), -90f);
+            Lantern(ctx, lanterns, new Vector3(-24f, ly, -RoomHalf + 0.8f), 0f);
+            Lantern(ctx, lanterns, new Vector3(-40f, ly - 2f, RoomHalf - 2.2f), 180f);
+            Lantern(ctx, lanterns, new Vector3(24f, ly - 2f, RoomHalf - 2.2f), 180f);
+
+            // low dusk sun through the west windows (walls do not cast shadows, so it fills the room warmly)
+            var sun = new GameObject("Dusk Sun").AddComponent<Light>();
+            sun.type = LightType.Directional;
+            sun.transform.rotation = Quaternion.Euler(26, 72, 0);
+            sun.color = new Color(1f, 0.6f, 0.34f);
+            sun.intensity = 0.8f;
+            sun.shadows = LightShadows.Soft;
+            sun.shadowStrength = 0.6f;
 
             // post processing
             var volGo = new GameObject("Global Volume");
@@ -775,6 +1028,8 @@ namespace SecretJenga.EditorTools
             atmos.bulbGlow = glow;
             atmos.lampRig = lampRig;
             atmos.bulbRenderer = bulb.GetComponent<MeshRenderer>();
+            atmos.extraBulbs = ctx.ExtraBulbs.ToArray();
+            atmos.roomLights = ctx.RoomLights.ToArray();
             atmos.volume = vol;
             sys.AddComponent<UIManager>();
 

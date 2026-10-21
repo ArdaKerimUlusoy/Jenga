@@ -136,7 +136,8 @@ namespace SecretJenga.Game
             if (!myTurn)
             {
                 SetHover(null);
-                Hint = stage == TurnStage.Settling ? "The tower is settling..." : $"{game.PlayerName(turns.ActiveClientId.Value)} reaches for the tower...";
+                Hint = stage == TurnStage.Settling ? L.T("The tower is settling...", "Kule oturuyor...")
+                    : L.T($"{game.PlayerName(turns.ActiveClientId.Value)} reaches for the tower...", $"{game.PlayerName(turns.ActiveClientId.Value)} kuleye uzanıyor...");
                 return;
             }
 
@@ -155,9 +156,9 @@ namespace SecretJenga.Game
                     _releaseSent = false;
                     bool pressured = turns.TouchMoveActive.Value;
                     var committed = pressured ? JengaBlock.Find(turns.CommittedBlockId.Value) : null;
-                    Hint = committed != null ? "Pressure: you must finish pulling the block you touched."
-                        : pressured ? "Your turn - under PRESSURE: the first block you grab is the one you must take."
-                        : "Your turn. Hold the left mouse button on a block and pull it out along its length.";
+                    Hint = committed != null ? L.T("Pressure: you must finish pulling the block you touched.", "Baskı: dokunduğun bloğu çekip çıkarmak zorundasın.")
+                        : pressured ? L.T("Your turn - under PRESSURE: the first block you grab is the one you must take.", "Sıra sende - BASKI altındasın: ilk tuttuğun bloğu almak zorundasın.")
+                        : L.T("Your turn. Hold the left mouse button on a block and pull it out along its length.", "Sıra sende. Bir bloğa sol tıkla, basılı tut ve boyuna doğru çekip çıkar.");
                     JengaBlock hit = null;
                     RaycastHit info = default;
                     if (!overUI && Physics.Raycast(ray, out info, 200f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
@@ -175,7 +176,7 @@ namespace SecretJenga.Game
                     {
                         if (!legal)
                         {
-                            UIManager.Instance?.Toast(committed != null ? "Pressure: you must take the block you touched first." : "Blocks from the top rows cannot be taken.", Palette.Bad);
+                            UIManager.Instance?.Toast(committed != null ? L.Resolve(L.Msg("pressure_touched")) : L.Resolve(L.Msg("not_top_layer")), Palette.Bad);
                             AudioManager.Instance?.Play(AudioManager.Sfx.Error);
                         }
                         else
@@ -188,8 +189,8 @@ namespace SecretJenga.Game
                 }
                 case TurnStage.Dragging:
                     SetHover(null);
-                    Hint = turns.SteadyGripActive.Value ? "Steady Grip: slow, straight pull. Release the mouse to let go."
-                        : "Pull slowly along the block's length. Release the mouse to let go.";
+                    Hint = turns.SteadyGripActive.Value ? L.T("Steady Grip: slow, straight pull. Release the mouse to let go.", "Sağlam Tutuş: yavaş ve düz çek. Bırakmak için fareyi bırak.")
+                        : L.T("Pull slowly along the block's length. Release the mouse to let go.", "Bloğu boyuna doğru yavaşça çek. Bırakmak için fareyi bırak.");
                     if (mouse.leftButton.isPressed)
                     {
                         if (_sendTimer <= 0f && _dragPlane.Raycast(ray, out float d))
@@ -207,7 +208,7 @@ namespace SecretJenga.Game
                 case TurnStage.Carrying:
                 {
                     SetHover(null);
-                    Hint = "The block is out. Move it over the tower and click a marked slot on top to place it.";
+                    Hint = L.T("The block is out. Move it over the tower and click a glowing slot on top to place it.", "Blok çıktı. Kulenin üstüne götür ve parlayan boş yere tıklayarak koy.");
                     var center = turns.PlaceCenter.Value;
                     var carryPlane = new Plane(Vector3.up, new Vector3(0, center.y + JengaDims.BlockHeight * 2.5f, 0));
                     if (carryPlane.Raycast(ray, out float d))
@@ -226,7 +227,7 @@ namespace SecretJenga.Game
                 }
                 case TurnStage.Settling:
                     SetHover(null);
-                    Hint = "Placed. Waiting for the tower to settle...";
+                    Hint = L.T("Placed. Waiting for the tower to settle...", "Kondu. Kulenin oturması bekleniyor...");
                     break;
             }
         }
@@ -269,7 +270,8 @@ namespace SecretJenga.Game
                 if (!free) continue;
                 _ghosts[i].transform.SetPositionAndRotation(JengaTower.SlotPosition(turns.PlaceCenter.Value, turns.PlaceRotY.Value, i), rot);
                 bool hot = myTurn && i == _hoverSlot;
-                var c = hot ? new Color(0.95f, 0.85f, 0.6f, 0.42f + 0.15f * pulse) : new Color(0.85f, 0.8f, 0.7f, 0.12f + 0.06f * pulse);
+                // clearly visible from any seat: free slots glow softly, the one under your hand glows bright
+                var c = hot ? new Color(1f, 0.82f, 0.45f, 0.62f + 0.18f * pulse) : new Color(0.95f, 0.85f, 0.62f, 0.26f + 0.12f * pulse);
                 _ghostRenderers[i].GetPropertyBlock(_mpb);
                 _mpb.SetColor("_BaseColor", c);
                 _ghostRenderers[i].SetPropertyBlock(_mpb);

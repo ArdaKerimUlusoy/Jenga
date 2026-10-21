@@ -115,8 +115,8 @@ namespace SecretJenga.Game
         public bool CanExtract(JengaBlock b, out string reason)
         {
             reason = null;
-            if (b == null || b.Layer.Value < 0) { reason = "That block is not part of the tower."; return false; }
-            if (b.Layer.Value >= ForbiddenFromLayer.Value) { reason = "You can't take blocks from the top layers."; return false; }
+            if (b == null || b.Layer.Value < 0) { reason = L.Msg("not_top"); return false; }
+            if (b.Layer.Value >= ForbiddenFromLayer.Value) { reason = L.Msg("not_top_layer"); return false; }
             return true;
         }
 

@@ -41,10 +41,29 @@ namespace SecretJenga.UI
         static SecretJengaAssets A => SecretJengaAssets.Instance;
 
         // ------------------------------------------------------------------ Lifecycle
+        bool _rebuildPending;
+
         void Awake()
         {
             Instance = this;
             EnsureEventSystem();
+            BuildAll();
+            L.Changed += OnLanguageChanged;
+
+            NetworkGameManager.Spawned += OnGameSpawned;
+            NetworkGameManager.Despawned += OnGameDespawned;
+            NetworkGameManager.Notification += OnNotification;
+            NetworkGameManager.MatchEnded += OnMatchEnded;
+            TurnManager.TurnStarted += OnTurnStarted;
+            TurnManager.PrivateMessage += OnPrivateMessage;
+            SecretTaskManager.LocalTaskChanged += OnTaskChanged;
+            RoundResults.Revealed += OnResultsRevealed;
+            CardManager.LocalCardChanged += OnCardChanged;
+            CardManager.CardPlayed += OnCardPlayed;
+        }
+
+        void BuildAll()
+        {
             BuildCanvas();
             BuildSplash();
             BuildMainMenu();
@@ -61,17 +80,32 @@ namespace SecretJenga.UI
             BuildLoading();
             BuildToasts();
             foreach (var g in _screens.Values) { g.alpha = 0; g.gameObject.SetActive(false); }
+        }
 
-            NetworkGameManager.Spawned += OnGameSpawned;
-            NetworkGameManager.Despawned += OnGameDespawned;
-            NetworkGameManager.Notification += OnNotification;
-            NetworkGameManager.MatchEnded += OnMatchEnded;
-            TurnManager.TurnStarted += OnTurnStarted;
-            TurnManager.PrivateMessage += OnPrivateMessage;
-            SecretTaskManager.LocalTaskChanged += OnTaskChanged;
-            RoundResults.Revealed += OnResultsRevealed;
-            CardManager.LocalCardChanged += OnCardChanged;
-            CardManager.CardPlayed += OnCardPlayed;
+        void OnLanguageChanged() => _rebuildPending = true;
+
+        /// <summary>Every screen is written in code, so a new language simply means writing them again.</summary>
+        void RebuildForLanguage()
+        {
+            _rebuildPending = false;
+            var view = _current;
+            bool settings = _settingsOpen, pause = _pauseOpen;
+            if (_root != null) Destroy(_root.gameObject);
+            _screens.Clear();
+            _slots.Clear();
+            _swatches.Clear();
+            _hudRows.Clear();
+            _tallies.Clear();
+            _toasts.Clear();
+            _hudRosterKey = "";
+            _tallyRequired = _tallyDone = -1;
+            _settingsOpen = _pauseOpen = _modalOpen = _loadingOpen = false;
+            _current = View.None;
+            BuildAll();
+            ShowScreen(view == View.None ? View.Main : view);
+            if (view == View.Hud) { OnTaskChanged(SecretTaskManager.LocalTask, false); OnCardChanged(CardManager.LocalCard); }
+            if (pause) TogglePause();
+            if (settings) OpenSettings();
         }
 
         void Start()
@@ -107,6 +141,7 @@ namespace SecretJenga.UI
                 s.SessionStarted -= OnSessionStarted;
                 s.SessionEnded -= OnSessionEnded;
             }
+            L.Changed -= OnLanguageChanged;
             if (Instance == this) Instance = null;
         }
 
@@ -228,6 +263,7 @@ namespace SecretJenga.UI
         // ------------------------------------------------------------------ Update / input
         void Update()
         {
+            if (_rebuildPending) RebuildForLanguage();
             if (_loadingOpen && _spinner != null)
             {
                 // the ink ring breathes instead of spinning like a web page
@@ -275,8 +311,9 @@ namespace SecretJenga.UI
             _pauseOpen = false;
             SetOverlay(_pauseGroup, false);
             _lastPhase = (GamePhase)255;
+            _pendingBots = 0;
             ShowScreen(View.Main);
-            if (!string.IsNullOrEmpty(reason)) ShowModal("Notice", reason);
+            if (!string.IsNullOrEmpty(reason)) ShowModal(L.T("Notice", "Bilgi"), reason);
         }
 
         void OnGameSpawned(NetworkGameManager g)
@@ -304,7 +341,7 @@ namespace SecretJenga.UI
                 _lastPhase = phase;
                 switch (phase)
                 {
-                    case GamePhase.Lobby: ShowScreen(View.Lobby); break;
+                    case GamePhase.Lobby: SeatPendingBots(); ShowScreen(View.Lobby); break;
                     case GamePhase.Countdown:
                     case GamePhase.Playing:
                         if (prev != GamePhase.Countdown && prev != GamePhase.Playing) ResetHud();
@@ -334,12 +371,12 @@ namespace SecretJenga.UI
         {
             _modalGroup = NewOverlay("Modal", 0.6f);
             var sheet = UIFactory.PaperSheet(_modalGroup.transform, "SheetModal", new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(780, 440), 1.1f, 1, 60);
-            _modalTitle = UIFactory.Title(sheet.Body, "Notice", 46);
+            _modalTitle = UIFactory.Title(sheet.Body, L.T("Notice", "Bilgi"), 46);
             UIFactory.Divider(sheet.Body);
             _modalText = UIFactory.Write(sheet.Body, FontKind.Type, "", 25, Ink.Black, TextAnchor.UpperLeft);
             UIFactory.LE(_modalText, 170);
             var row = UIFactory.ButtonRow(sheet.Body, 64, 40, TextAnchor.MiddleRight);
-            UIFactory.Button(row, "Understood", () => { var a = _modalOk; CloseModal(); a?.Invoke(); }, ButtonStyle.Primary, 34);
+            UIFactory.Button(row, L.T("Understood", "Anladım"), () => { var a = _modalOk; CloseModal(); a?.Invoke(); }, ButtonStyle.Primary, 34);
             UIFactory.OnPaper = false;
         }
 

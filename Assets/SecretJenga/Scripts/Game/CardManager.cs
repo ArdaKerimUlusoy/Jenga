@@ -84,26 +84,40 @@ namespace SecretJenga.Game
 
         void SendCardTo(ulong clientId, CardInfo info)
         {
+            if (_game.IsBot(clientId)) return;
             var p = new ClientRpcParams { Send = new ClientRpcSendParams { TargetClientIds = new[] { clientId } } };
             CardUpdateClientRpc(info, p);
         }
 
         // ------------------------------------------------------------------ Client -> host
         [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
-        public void PlayCardServerRpc(RpcParams rpc = default)
+        public void PlayCardServerRpc(RpcParams rpc = default) => ServerTryPlay(rpc.Receive.SenderClientId, true);
+
+        /// <summary>Host: does this player hold an unused card that may be played right now? (used by bots)</summary>
+        public bool ServerCanPlay(ulong clientId, out CardKind kind)
         {
-            ulong sender = rpc.Receive.SenderClientId;
-            var auth = AuthOf(sender);
-            if (auth == null || !_hands.TryGetValue(auth, out var card) || card.Kind == CardKind.None) return;
-            if (card.Used) { _game.Turns.SendPrivateMessage(sender, "You already played your card this round."); return; }
+            kind = CardKind.None;
+            var auth = AuthOf(clientId);
+            if (auth == null || !_hands.TryGetValue(auth, out var card) || card.Kind == CardKind.None || card.Used) return false;
             var def = GameContent.Card(card.DefinitionIndex);
-            if (def == null) return;
+            if (def == null || !_game.Turns.CanPlayCardNow(clientId, def.timing)) return false;
+            kind = def.kind;
+            return true;
+        }
+
+        /// <summary>Host-side validation + effect. Players arrive here through the RPC, bots directly.</summary>
+        public bool ServerTryPlay(ulong sender, bool tellSender)
+        {
+            if (!IsServer) return false;
+            var auth = AuthOf(sender);
+            if (auth == null || !_hands.TryGetValue(auth, out var card) || card.Kind == CardKind.None) return false;
+            if (card.Used) { if (tellSender) _game.Turns.SendPrivateMessage(sender, L.Msg("card_cant")); return false; }
+            var def = GameContent.Card(card.DefinitionIndex);
+            if (def == null) return false;
             if (!_game.Turns.CanPlayCardNow(sender, def.timing))
             {
-                _game.Turns.SendPrivateMessage(sender, def.timing == CardTiming.OwnTurnBeforeExtraction
-                    ? $"{def.title} can only be played on your turn, before your block is out."
-                    : $"{def.title} can only be played on your turn, before you place your block.");
-                return;
+                if (tellSender) _game.Turns.SendPrivateMessage(sender, L.Msg("card_cant"));
+                return false;
             }
 
             string who = _game.PlayerName(sender);
@@ -113,27 +127,28 @@ namespace SecretJenga.Game
             {
                 case CardKind.SteadyGrip:
                     _game.Turns.ServerApplySteadyGrip(def);
-                    msg = $"{who} plays STEADY GRIP. Their pull is steadier until the block is out.";
+                    msg = L.Msg("card_steady", who);
                     break;
                 case CardKind.Pressure:
                     target = _game.Turns.ServerQueuePressure(sender, def);
-                    if (target == ulong.MaxValue) { _game.Turns.SendPrivateMessage(sender, "There is no other player to put under pressure."); return; }
-                    msg = $"{who} plays PRESSURE on {_game.PlayerName(target)}: next turn they must take the first block they touch.";
+                    if (target == ulong.MaxValue) { if (tellSender) _game.Turns.SendPrivateMessage(sender, L.Msg("card_nobody")); return false; }
+                    msg = L.Msg("card_pressure", who, _game.PlayerName(target));
                     break;
                 case CardKind.SecondChance:
                     _game.Turns.ServerArmSecondChance(def);
-                    msg = $"{who} plays SECOND CHANCE for this turn.";
+                    msg = L.Msg("card_second", who);
                     break;
                 default:
-                    return;
+                    return false;
             }
 
             card.Used = true;
             _hands[auth] = card;
             SendCardTo(sender, card);
-            _log.Add($"{who}: {def.title}" + (target != ulong.MaxValue ? $" on {_game.PlayerName(target)}" : ""));
+            _log.Add(msg);
             CardPlayedClientRpc(sender, def.kind, target, new FixedString128Bytes(Trim(msg)));
             _game.Tasks.ServerOnCardPlayed(sender, def.kind, target);
+            return true;
         }
 
         /// <summary>Host: tell everyone that an armed effect actually triggered (e.g. Second Chance).</summary>
@@ -158,7 +173,7 @@ namespace SecretJenga.Game
         void CardPlayedClientRpc(ulong user, CardKind kind, ulong target, FixedString128Bytes message)
         {
             AudioManager.Instance?.Play(AudioManager.Sfx.CardPlayed);
-            CardPlayed?.Invoke(user, kind, target, message.ToString());
+            CardPlayed?.Invoke(user, kind, target, L.Resolve(message.ToString()));
         }
 
         [ClientRpc]

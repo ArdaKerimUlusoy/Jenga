@@ -11,8 +11,9 @@ namespace SecretJenga.Game
     ///   A / D  (or Q / E)     lean left / right around the table edge (limited)
     ///   W / S  or mouse wheel lean in towards the tower / sit back
     ///   Middle mouse          re-center the view
-    /// The default view always frames the tower and follows its height. Subtle breathing and a slight drift
-    /// towards your hand while handling a block; collapse shake is short and small.
+    /// The default view always frames the tower and follows its height: as the tower grows you sit up straighter,
+    /// and while YOU carry a block you rise out of the chair and look down on the top, so the free slots are clearly
+    /// visible. Subtle breathing and a slight drift towards your hand; collapse shake is short and small.
     /// </summary>
     public class CameraController : MonoBehaviour
     {
@@ -30,9 +31,12 @@ namespace SecretJenga.Game
         public float fieldOfView = 58f;
 
         Camera _cam;
-        float _yaw, _pitch, _lean, _leanIn, _leanTarget, _leanInTarget, _shakeTime, _shakeAmount, _focusY = 2f;
+        float _yaw, _pitch, _lean, _leanIn, _leanTarget, _leanInTarget, _shakeTime, _shakeAmount, _focusY = 2f, _rise, _towerTop;
         Vector3 _focusShift;
         int _seat;
+
+        /// <summary>Extra pitch set by gestures (tilting the head back while drinking). Negative = look up.</summary>
+        public float GesturePitch { get; set; }
 
         /// <summary>Seat the camera currently uses (local player's seat, or 0 in menus).</summary>
         public int Seat => _seat;
@@ -118,31 +122,54 @@ namespace SecretJenga.Game
             _lean = Mathf.Lerp(_lean, _leanTarget, 1f - Mathf.Exp(-6f * dt));
             _leanIn = Mathf.Lerp(_leanIn, _leanInTarget, 1f - Mathf.Exp(-6f * dt));
 
+            // tower height (smoothed) - used for the head height and for what we look at
+            float towerTop = JengaDims.TableTopY + GameRules.DefaultStartLayers * JengaDims.BlockHeight;
+            if (inRoom && game.Tower != null && game.Tower.LayerCount.Value > 0)
+                towerTop = JengaDims.TableTopY + game.Tower.LayerCount.Value * JengaDims.BlockHeight;
+            _towerTop = Mathf.Lerp(_towerTop <= 0f ? towerTop : _towerTop, towerTop, 1f - Mathf.Exp(-2f * dt));
+
+            bool carryingMine = false, handlingMine = false;
+            if (inRoom && game.Turns != null && game.Turns.IsLocalPlayersTurn)
+            {
+                var st0 = game.Turns.Stage.Value;
+                carryingMine = st0 == TurnStage.Carrying;
+                handlingMine = st0 == TurnStage.Dragging || carryingMine;
+            }
+            // rise out of the chair while placing on top (eased, so it never snaps)
+            _rise = Mathf.Lerp(_rise, carryingMine ? 1f : 0f, 1f - Mathf.Exp(-3.2f * dt));
+
             // head position: the seat's eye point, leaned around the table edge and towards the tower
             var eye = SeatLayout.EyePosition(_seat);
+            // sit up as the tower grows: always keep the eyes a bit above the top of the tower
+            eye.y = Mathf.Max(eye.y, _towerTop + 3.2f);
+            // standing up to place: eyes well above the top, and a step closer
+            eye.y = Mathf.Lerp(eye.y, Mathf.Max(eye.y, _towerTop + 7.5f), _rise);
             var leanRot = Quaternion.AngleAxis(-_lean * maxLeanAngle, Vector3.up);
             var pos = leanRot * new Vector3(eye.x, 0f, eye.z);
             var inward3 = -pos.normalized;
-            pos += inward3 * (_leanIn * maxLeanIn);
+            pos += inward3 * (_leanIn * maxLeanIn + _rise * 1.8f);
             pos.y = eye.y - _leanIn * 1.2f;
 
             // breathing
             float breathe = Mathf.Sin(Time.time * 1.6f) * 0.03f;
             pos.y += breathe;
 
-            // what we look at: the tower, following its height (and the top while a block is carried)
-            float towerTop = JengaDims.TableTopY + GameRules.DefaultStartLayers * JengaDims.BlockHeight;
-            if (inRoom && game.Tower != null && game.Tower.LayerCount.Value > 0)
-                towerTop = JengaDims.TableTopY + game.Tower.LayerCount.Value * JengaDims.BlockHeight;
-            float focusY = Mathf.Clamp(towerTop * 0.55f, 1.2f, Mathf.Max(1.2f, towerTop));
+            // what we look at: the tower, following its height (the very top while a block is carried)
+            float focusY = Mathf.Clamp(_towerTop * 0.55f, 1.2f, Mathf.Max(1.2f, _towerTop));
             Vector3 shiftTarget = Vector3.zero;
             if (inRoom && game.Turns != null)
             {
                 var st = game.Turns.Stage.Value;
-                if (st == TurnStage.Carrying) focusY = Mathf.Max(focusY, towerTop * 0.85f);
-                if (game.Turns.IsLocalPlayersTurn && (st == TurnStage.Dragging || st == TurnStage.Carrying))
+                if (st == TurnStage.Carrying)
+                {
+                    var pc = game.Turns.PlaceCenter.Value;
+                    focusY = Mathf.Max(focusY, pc.y - 0.6f);
+                    if (carryingMine) shiftTarget = new Vector3(pc.x, 0f, pc.z);
+                }
+                else if (handlingMine)
                 {
                     var hp = game.Turns.CursorPoint.Value;
+                    focusY = Mathf.Lerp(focusY, hp.y, 0.35f);
                     shiftTarget = new Vector3(hp.x, 0f, hp.z) * 0.18f; // drift slightly towards your hand
                 }
             }
@@ -152,7 +179,7 @@ namespace SecretJenga.Game
 
             var baseRot = Quaternion.LookRotation(focus - pos, Vector3.up);
             var e = baseRot.eulerAngles;
-            var rot = Quaternion.Euler(e.x + _pitch, e.y + _yaw, 0f);
+            var rot = Quaternion.Euler(e.x + _pitch + GesturePitch, e.y + _yaw, 0f);
 
             if (_shakeTime > 0f)
             {

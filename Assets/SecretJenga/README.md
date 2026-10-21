@@ -1,9 +1,42 @@
 # THE LAST BLOCK — playable prototype
 
-Online, first-person, physics-based Jenga for 2–5 players in a dark underground room.
-Shared objective, secret personal tasks, three experimental cards, host-authoritative physics.
+Online, first-person, physics-based Jenga for 2–5 players (or you against bots) in an old frontier saloon.
+No turn limit — the tower stands until somebody drops it, **and whoever drops it loses**. Secret personal tasks,
+three experimental cards, host-authoritative physics, English / Türkçe.
 
 ---
+
+## Sürüm 0.2'de neler değişti (Türkçe)
+
+* **Kural:** 12 tur hedefi kaldırıldı. Kule yıkılana kadar sırayla oynanır; **kuleyi yıkan kaybeder**, diğer herkes
+  kazanır. Beraberlik yok. Sonuç ekranında kaybeden ve kazananlar yazar, damga sana göre *KAZANDIN / KAYBETTİN*.
+* **Botlar:** Ana menüde **Botlara karşı tek oyna** (tek tıkla masa kurar ve 2 bot oturtur) ya da lobide kurucu
+  **+ bot oturt / - botu kaldır** düğmeleri. Botlar insanlarla aynı fizikle oynar, kuleyi yıkıp kaybedebilirler.
+* **Eller ve görüş:** kendi kolunun üst kısmı artık görünmez (kuleyi kapatmaz); blok taşırken el bloğu yakın
+  ucundan, alttan tutar; taşıma sırasında kamera hafifçe ayağa kalkıp kulenin tepesine bakar; boş yerler
+  parlar; kule uzadıkça oturuş yüksekliği artar. El hareketleri yaylı/yumuşak (SmoothDamp) ve blokla kilitli.
+* **Ortam:** eski kovboy salonu — tahta zemin ve lambri, duvar kağıdı, kirişler, aynalı bar ve şişeler, SALOON
+  tabelası, WANTED afişleri, piyano, fıçılar, yan masalar, gün batımı pencereleri, yaylı kapılar, masanın üstünde
+  mumlu araba tekerleği avize, duvar fenerleri. Işık sıcak ve aydınlık.
+* **Türkçe:** Ana menünün sağ üstünde *English / Türkçe* (ya da Ayarlar > Dil). Sunucu mesajları her oyuncuya kendi
+  dilinde gösterilir.
+* **Karakter:** Quaternius'un **Universal Animation Library** mankeni (CC0), `Tools~/blender_build_cowboy.py` ile
+  kovboy şapkası, boyunbağı ve salon kıyafetiyle giydirildi; oturma animasyonlarıyla sandalyelerde oturur.
+  Dosya: `Models/Characters/TLB_Cowboy.fbx`.
+* Yeni dokular `Tools~/generate_saloon_textures.py` ile üretildi. **Generate Project'i yeniden çalıştırın.**
+
+### Puanlar ve el hareketleri (0.2.1)
+
+* **Maç = birkaç el** (lobide *Maçtaki el sayısı*, varsayılan 3). Her elin puanı toplama eklenir, son elden sonra
+  **en yüksek toplam maçı kazanır**. Puanlar (`Game/ScoreRules.cs`):
+  * Kuleyi yıkmadın: **+3** · Kuleyi yıktın: **-3**
+  * Gizli görev tamam: **Gözü Kara +4**, Sağlam Eller / Titiz Usta / Kule Bekçisi **+3**, Kart Ustası **+2**,
+    Baskıcı **+1** (kartı garanti olduğu için) · Görevin en az yarısı (hedef 2+ ise): **+1**
+  * Denge: yıkmak, hayatta kalana göre 6 puan kaybettirir; bu hiçbir tek görevden fazla. Yani görev için kuleyi
+    riske atmak asla "bedava" değil, ama zor görevi bitiren dikkatli oyuncu (+7) sadece güvenli oynayanı (+3)
+    geçer ve 3 ellik maçta bir yıkılış toparlanabilir. Görev değerleri her TaskDefinition'da `bonusPoints` ile değişir.
+* **El hareketleri** (sol el, herkes görür, botlar da yapar): **1** tamam işareti · **2** başparmak · **3** orta parmak
+  · **4** önündeki bira bardağından bir yudum · **5** el sallama · **6** rock işareti.
 
 ## Hızlı başlangıç (Türkçe)
 
@@ -11,12 +44,13 @@ Shared objective, secret personal tasks, three experimental cards, host-authorit
    **Tools > The Last Block > Generate Project** çalıştırın. Bu; yeraltı odasını, prefab'ları, materyalleri,
    görev/kart asset'lerini ve `Assets/SecretJenga/Scenes/TheLastBlock.unity` sahnesini oluşturur
    (eski oturma odası asset'lerini siler). Tekrar çalıştırmak güvenlidir.
-2. Sahneyi açın, **Play**: *Host a table > Direct (IP / LAN) > Open the table*.
+2. Sahneyi açın, **Play**. Tek başına: **Botlara karşı tek oyna** > lobide **Başla**.
+   Arkadaşlarla: *Masa kur > Doğrudan (IP / LAN) > Masayı aç*.
 3. İkinci oyuncu: ikinci bir build açın (Build Settings > Build) ya da *Multiplayer Play Mode* paketini
    (Package Manager > `com.unity.multiplayer.playmode`) kurup sanal oyuncu açın,
    *Join a table > Direct (IP / LAN)*, adres **127.0.0.1**, port **7777**, *Sit down*, sonra *I am ready*.
    Host *Begin* der.
-4. Tek başına fizik testi: *Settings > Host may start alone*.
+4. Botsuz tek başına fizik testi: *Ayarlar > Kurucu yalnız başlatabilir*.
 5. İnternet üzerinden: Direct modunda host'un UDP 7777 portunu yönlendirin (veya VPN/Hamachi/Tailscale),
    ya da projeyi Unity Cloud'a bağlayıp **Online (Relay)** modunu kullanın (aşağıya bakın).
 
@@ -146,11 +180,16 @@ the table (`SeatLayout`).
 * Join, take one of five chairs. Host presses *Begin* when everyone is ready. Turn order is random.
 * Your turn: grab a legal block (not from the top row or the unfinished row below it), pull it out along its
   length, move it over the tower, click a marked free slot. The turn counts when the tower has settled.
-* **Shared objective:** the group must complete *N* successful turns (default 12). If the tower falls first, the
-  group fails. Timeouts and turns without a placed block simply do not count.
+* **No turn limit — whoever drops the tower loses.** Play goes round the table until the tower falls (any block
+  leaving the tower counts, Second Chance aside). The player whose turn it was loses, everybody else wins.
+  Timeouts and turns without a placed block simply pass to the next player. If too few players stay connected the
+  round ends without a loser.
+* **Bots** (host only): *Play alone vs bots* in the main menu, or *+ seat a bot* in the lobby. `Game/BotBrain` runs on
+  the host and drives the same TurnManager entry points as a client RPC (grab, pull, carry, place), plays its card
+  now and then and gets nervous when the tower sways.
 * **Secret tasks** (one per player, private, revealed at the end): Risk Taker, Steady Hands, Card Collector,
-  Pressure Player, Tower Keeper, Careful Builder. Targets are lowered automatically to the number of turns a player
-  can expect, so tasks stay achievable; no task needs anyone to fail.
+  Pressure Player, Tower Keeper, Careful Builder. Targets are sized for a typical round (`GameRules.TaskTurnHint`)
+  so tasks stay achievable; no task needs anyone to fail.
 * **Cards** (one random card per player per round, private until played; key **C**):
   * *Steady Grip* — your turn, before the block is out: slower, straighter pull, lower held friction.
   * *Pressure* — your turn: the next player must take the first block they touch on their next turn (touch-move).
@@ -207,3 +246,13 @@ collapsing the tower while carrying; repeated rounds. ✔ No stuck state; the ro
 ## 6. Out of scope for this prototype
 Multiple rooms, free movement, monsters/combat, classes, customization, progression, cosmetics, matchmaking,
 host migration, final character models/animations.
+
+
+---
+
+## 7. Credits
+
+* Characters: **Universal Animation Library** by Quaternius — CC0 1.0 (https://quaternius.com), dressed as saloon
+  patrons by `Tools~/blender_build_cowboy.py` (needs Blender 4.x or the `bpy` Python module + `UAL1.glb`).
+* Fonts: IM Fell English (Igino Marini, OFL), Special Elite (Astigmatic, Apache 2.0).
+* Everything else (room, textures, sounds, UI art) is generated by the scripts in `Tools~`.

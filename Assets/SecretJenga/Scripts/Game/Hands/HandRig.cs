@@ -3,7 +3,12 @@ using UnityEngine;
 namespace SecretJenga.Game
 {
     /// <summary>Named hand shapes. Every player's hand blends smoothly between them.</summary>
-    public enum HandPoseId : byte { Rest = 0, Flat = 1, Point = 2, Pinch = 3, Hold = 4, Recoil = 5, Drum = 6, Knock = 7 }
+    public enum HandPoseId : byte
+    {
+        Rest = 0, Flat = 1, Point = 2, Pinch = 3, Hold = 4, Recoil = 5, Drum = 6, Knock = 7,
+        // gestures (see HandGestures)
+        Ok = 8, ThumbsUp = 9, MiddleFinger = 10, MugGrip = 11, Open = 12, Horns = 13,
+    }
 
     /// <summary>
     /// A procedurally built, articulated hand + arm (no imported model needed).
@@ -35,6 +40,17 @@ namespace SecretJenga.Game
                 case HandPoseId.Recoil: return new Pose(0.70f, 0.78f, 0.84f, 0.88f, 0.65f, 0.55f, 0.2f);
                 case HandPoseId.Drum: return new Pose(0.18f, 0.18f, 0.2f, 0.22f, 0.15f, 0.1f, 0.25f);
                 case HandPoseId.Knock: return new Pose(0.95f, 0.98f, 0.98f, 0.98f, 0.75f, 0.35f, 0f);
+                // index and thumb make the ring, the other three fingers fan out
+                case HandPoseId.Ok: return new Pose(0.62f, 0.06f, 0.08f, 0.12f, 0.55f, 1.0f, 0.55f);
+                // fist, thumb straight out
+                case HandPoseId.ThumbsUp: return new Pose(0.97f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0f);
+                case HandPoseId.MiddleFinger: return new Pose(0.97f, 0.0f, 0.97f, 0.97f, 0.7f, 0.6f, 0f);
+                // wrapped round a beer mug
+                case HandPoseId.MugGrip: return new Pose(0.62f, 0.66f, 0.68f, 0.7f, 0.35f, 0.9f, 0.02f);
+                // open hand, fingers spread (wave)
+                case HandPoseId.Open: return new Pose(0.0f, 0.0f, 0.02f, 0.05f, 0.05f, 0.0f, 1.0f);
+                // index + pinky up ("rock on")
+                case HandPoseId.Horns: return new Pose(0.0f, 0.97f, 0.97f, 0.0f, 0.75f, 0.85f, 0.4f);
                 default: return new Pose(0.32f, 0.38f, 0.44f, 0.5f, 0.3f, 0.25f, 0.2f);
             }
         }
@@ -42,10 +58,25 @@ namespace SecretJenga.Game
         [Tooltip("+1 = right hand, -1 = left hand.")]
         public float side = 1f;
         public Transform Wrist { get; private set; }
+        /// <summary>World position of the palm centre (where a held object sits).</summary>
+        public Vector3 PalmPosition => _palmCenter != null ? _palmCenter.position : transform.position;
         public Vector3 Shoulder { get; set; }
         /// <summary>0..1 visible trembling (fear, a wobbling tower).</summary>
         public float Tremble { get; set; }
         public HandPoseId CurrentPose => _poseId;
+        /// <summary>First-person: hide the upper arm and the sleeve so your own arm never covers the tower.</summary>
+        public bool FirstPerson
+        {
+            get => _firstPerson;
+            set
+            {
+                if (_firstPerson == value) return;
+                _firstPerson = value;
+                foreach (var r in _upper.GetComponentsInChildren<Renderer>(true)) r.enabled = !value;
+                foreach (var r in _sleeve.GetComponentsInChildren<Renderer>(true)) r.enabled = !value;
+            }
+        }
+        bool _firstPerson;
 
         const float UpperArm = 6.4f, Forearm = 5.8f;
 
@@ -194,16 +225,30 @@ namespace SecretJenga.Game
 
         /// <summary>
         /// Where the hand's contact point should be and how the hand is oriented (forward = fingers, up = back of hand).
-        /// `snap` = 0..1 responsiveness (1 = glued, e.g. while holding a block).
+        /// `follow` = responsiveness (higher = faster). The hand moves on a critically damped spring, so it eases in
+        /// and out like a real hand instead of sliding at a constant rate. With `glue` the hand locks onto the target
+        /// once it has arrived (holding a block: the grip must not lag behind the replicated block).
         /// </summary>
-        public void SetContact(Vector3 worldContact, Quaternion orientation, float follow)
+        public void SetContact(Vector3 worldContact, Quaternion orientation, float follow, bool glue = false)
         {
             float dt = Mathf.Max(Time.deltaTime, 1e-4f);
-            if (!_hasContact) { _contact = worldContact; _orient = orientation; _hasContact = true; }
-            float k = 1f - Mathf.Exp(-follow * dt);
-            _contact = Vector3.Lerp(_contact, worldContact, k);
-            _orient = Quaternion.Slerp(_orient, orientation, 1f - Mathf.Exp(-follow * 0.8f * dt));
+            if (!_hasContact) { _contact = worldContact; _orient = orientation; _hasContact = true; _contactVel = Vector3.zero; }
+            if (glue && _glued)
+            {
+                _contact = worldContact;
+                _contactVel = Vector3.zero;
+            }
+            else
+            {
+                float smooth = Mathf.Clamp(1.8f / Mathf.Max(1f, follow), 0.035f, 0.5f);
+                _contact = Vector3.SmoothDamp(_contact, worldContact, ref _contactVel, smooth, 80f, dt);
+                if (glue && (_contact - worldContact).sqrMagnitude < 0.04f) _glued = true;
+            }
+            if (!glue) _glued = false;
+            _orient = Quaternion.Slerp(_orient, orientation, 1f - Mathf.Exp(-follow * (glue ? 1.2f : 0.7f) * dt));
         }
+
+        bool _glued;
 
         Transform ContactFor(HandPoseId id)
         {

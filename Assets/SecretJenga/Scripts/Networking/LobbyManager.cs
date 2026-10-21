@@ -21,7 +21,7 @@ namespace SecretJenga.Networking
         public const string KeyRelayCode = "relay";
         public const string KeyStatus = "status";   // indexed S1: "waiting" / "playing"
         public const string KeyVersion = "ver";     // indexed S2: build version
-        public const string KeyTarget = "target";   // indexed N1: required successful turns
+        public const string KeyTarget = "target";   // unused since rounds have no turn limit (kept for older lobbies)
         public const string StatusWaiting = "waiting";
         public const string StatusPlaying = "playing";
 
@@ -59,7 +59,6 @@ namespace SecretJenga.Networking
                     { KeyRelayCode, new DataObject(DataObject.VisibilityOptions.Member, relayCode) },
                     { KeyStatus, new DataObject(DataObject.VisibilityOptions.Public, StatusWaiting, DataObject.IndexOptions.S1) },
                     { KeyVersion, new DataObject(DataObject.VisibilityOptions.Public, GameRules.BuildVersion, DataObject.IndexOptions.S2) },
-                    { KeyTarget, new DataObject(DataObject.VisibilityOptions.Public, s.requiredTurns.ToString(), DataObject.IndexOptions.N1) },
                 }
             };
             string name = string.IsNullOrWhiteSpace(s.roomName) ? "The Last Block" : s.roomName.Trim();
@@ -212,12 +211,12 @@ namespace SecretJenga.Networking
             if (e is LobbyServiceException le)
             {
                 var r = le.Reason.ToString();
-                if (r.Contains("LobbyFull")) return "This room is full.";
-                if (r.Contains("LobbyNotFound")) return "Room not found. It may have closed.";
-                if (r.Contains("InvalidJoinCode") || r.Contains("ValidationError")) return "Invalid room code.";
-                if (r.Contains("LobbyLocked")) return "This game has already started.";
-                if (r.Contains("RateLimited")) return "Too many requests. Wait a moment and try again.";
-                if (r.Contains("LobbyConflict") || r.Contains("AlreadyMember")) return "You are already in this room (try 'Rejoin').";
+                if (r.Contains("LobbyFull")) return L.T("This room is full.", "Bu oda dolu.");
+                if (r.Contains("LobbyNotFound")) return L.T("Room not found. It may have closed.", "Oda bulunamadı. Kapanmış olabilir.");
+                if (r.Contains("InvalidJoinCode") || r.Contains("ValidationError")) return L.T("Invalid room code.", "Geçersiz oda kodu.");
+                if (r.Contains("LobbyLocked")) return L.T("This game has already started.", "Bu oyun çoktan başladı.");
+                if (r.Contains("RateLimited")) return L.T("Too many requests. Wait a moment and try again.", "Çok fazla istek. Biraz bekleyip tekrar dene.");
+                if (r.Contains("LobbyConflict") || r.Contains("AlreadyMember")) return L.T("You are already in this room (try 'Return to your seat').", "Zaten bu odadasın ('Yerine dön'ü dene).");
                 return "Lobby error: " + r;
             }
             return MultiplayerServiceManager.Describe(e);

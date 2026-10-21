@@ -17,7 +17,11 @@ namespace SecretJenga.Networking
         public bool IsReady;
         public bool IsConnected;
         public bool IsHost;
+        /// <summary>Host-simulated AI player (no network connection, plays through BotBrain).</summary>
+        public bool IsBot;
         public int JoinOrder;
+        /// <summary>Points collected so far in the current match.</summary>
+        public int Score;
 
         public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
         {
@@ -29,12 +33,14 @@ namespace SecretJenga.Networking
             serializer.SerializeValue(ref IsReady);
             serializer.SerializeValue(ref IsConnected);
             serializer.SerializeValue(ref IsHost);
+            serializer.SerializeValue(ref IsBot);
             serializer.SerializeValue(ref JoinOrder);
+            serializer.SerializeValue(ref Score);
         }
 
         public bool Equals(PlayerData o) =>
             ClientId == o.ClientId && AuthId.Equals(o.AuthId) && Name.Equals(o.Name) && ColorIndex == o.ColorIndex &&
-            SeatIndex == o.SeatIndex && IsReady == o.IsReady && IsConnected == o.IsConnected && IsHost == o.IsHost && JoinOrder == o.JoinOrder;
+            SeatIndex == o.SeatIndex && IsReady == o.IsReady && IsConnected == o.IsConnected && IsHost == o.IsHost && IsBot == o.IsBot && JoinOrder == o.JoinOrder && Score == o.Score;
 
         public override bool Equals(object obj) => obj is PlayerData p && Equals(p);
         public override int GetHashCode() => ClientId.GetHashCode();
@@ -91,9 +97,16 @@ namespace SecretJenga.Networking
         public CardInfo Card;
         public int SuccessfulTurns;
         public bool CausedCollapse;
+        /// <summary>Points this round: for surviving / dropping the tower, and for the secret task.</summary>
+        public int SurvivalPoints, TaskPoints;
+        /// <summary>Match total after this round.</summary>
+        public int TotalScore;
 
         public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
         {
+            serializer.SerializeValue(ref SurvivalPoints);
+            serializer.SerializeValue(ref TaskPoints);
+            serializer.SerializeValue(ref TotalScore);
             serializer.SerializeValue(ref ClientId);
             serializer.SerializeValue(ref Name);
             serializer.SerializeValue(ref ColorIndex);
@@ -119,9 +132,9 @@ namespace SecretJenga.Networking
     {
         public string roomName = "The Last Block";
         public int maxPlayers = GameRules.MaxPlayers;
-        public int requiredTurns = GameRules.DefaultRequiredTurns;
         public int startLayers = GameRules.DefaultStartLayers;
         public int turnSeconds = GameRules.DefaultTurnSeconds;
+        public int matchRounds = GameRules.DefaultMatchRounds;
         public bool isPrivate;
         /// <summary>Direct IP hosting (LAN / port forwarding) instead of Unity Relay + Lobby.</summary>
         public bool direct;

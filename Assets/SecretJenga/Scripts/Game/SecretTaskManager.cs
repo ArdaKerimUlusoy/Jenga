@@ -14,7 +14,8 @@ namespace SecretJenga.Game
     /// knows every task because it is the authority - the host UI only shows its own.)
     ///
     /// Fairness: no task requires another player to fail or the tower to fall. Numeric targets are lowered to the
-    /// number of turns a player can expect this round, so every task stays achievable.
+    /// number of turns a player can expect in a typical round (GameRules.TaskTurnHint), so every task stays achievable.
+    /// The round itself has no turn limit: it lasts until the tower falls, and whoever drops it loses.
     /// </summary>
     public class SecretTaskManager : NetworkBehaviour
     {
@@ -54,7 +55,7 @@ namespace SecretJenga.Game
 
         // ------------------------------------------------------------------ Server: dealing
         /// <summary>Deals tasks to the connected players. Returns clientId -> task kind (CardManager uses it).</summary>
-        public Dictionary<ulong, TaskKind> ServerDeal(List<PlayerData> players, int requiredTurns)
+        public Dictionary<ulong, TaskKind> ServerDeal(List<PlayerData> players)
         {
             var dealt = new Dictionary<ulong, TaskKind>();
             if (!IsServer) return dealt;
@@ -79,7 +80,8 @@ namespace SecretJenga.Game
 
             int connected = 0;
             foreach (var p in players) if (p.IsConnected) connected++;
-            int expectedTurns = Mathf.Max(1, requiredTurns / Mathf.Max(1, connected));
+            int groupTurns = GameRules.TaskTurnHint;
+            int expectedTurns = Mathf.Max(1, groupTurns / Mathf.Max(1, connected));
 
             int k = 0;
             foreach (var p in players)
@@ -87,7 +89,7 @@ namespace SecretJenga.Game
                 if (!p.IsConnected) continue;
                 int defIndex = pool[k++ % pool.Count];
                 var def = defs[defIndex];
-                int target = def.kind == TaskKind.TowerKeeper ? def.MilestoneFor(requiredTurns) : def.target;
+                int target = def.kind == TaskKind.TowerKeeper ? def.MilestoneFor(groupTurns) : def.target;
                 if (def.scaleTargetToTurns) target = Mathf.Clamp(target, 1, expectedTurns);
                 var st = new ServerTask
                 {
@@ -117,6 +119,7 @@ namespace SecretJenga.Game
 
         void SendTaskTo(ulong clientId, TaskInfo info, bool justCompleted)
         {
+            if (_game.IsBot(clientId)) return; // bots keep their task on the host; it is revealed with the results
             var p = new ClientRpcParams { Send = new ClientRpcSendParams { TargetClientIds = new[] { clientId } } };
             TaskUpdateClientRpc(info, justCompleted, p);
         }
