@@ -40,6 +40,9 @@ namespace SecretJenga.Game
             public Vector3 PelvisOffset;     // pelvis position relative to the model root (scaled, model space)
             public Quaternion FacingFix = Quaternion.identity;
             public Quaternion HeadExtra = Quaternion.identity;
+            // the pose the bones had before we added lean / head turn on top (see RestoreBone)
+            public Quaternion SpineBase, SpineSet, HeadBase, HeadSet;
+            public bool SpineTouched, HeadTouched;
             // gestures
             public Gesture G;
             public float GStart;
@@ -519,6 +522,16 @@ namespace SecretJenga.Game
             av.Torso.SetPositionAndRotation(hips, SeatLayout.Facing(av.Seat) * Quaternion.Euler(8f, 0f, 0f));
         }
 
+        /// <summary>
+        /// If the bone still holds exactly what we wrote last frame, the Animator did not touch it this frame: put the
+        /// clean pose back before adding our offset again. If the Animator did rewrite it, its pose is the new clean one.
+        /// </summary>
+        static void RestoreBone(Transform bone, ref bool touched, Quaternion lastSet, ref Quaternion basePose)
+        {
+            if (touched && Quaternion.Angle(bone.localRotation, lastSet) < 0.01f) bone.localRotation = basePose;
+            basePose = bone.localRotation;
+        }
+
         static Vector3 RestPoint(int seat, float side, Vector3 right)
         {
             var outward = SeatLayout.Outward(seat);
@@ -561,7 +574,15 @@ namespace SecretJenga.Game
                 av.BUpperR.localScale = Vector3.one * 0.0001f;
                 // lean over the table when the hand has to reach far (the tower is in the middle of a big table)
                 av.Lean = Mathf.Lerp(av.Lean, av.LeanTarget, 1f - Mathf.Exp(-3.5f * Time.deltaTime));
-                if (av.BSpine != null && av.Lean > 0.1f) av.BSpine.rotation = Quaternion.AngleAxis(av.Lean, seatRight) * av.BSpine.rotation;
+                if (av.BSpine != null)
+                {
+                    // start from the clean pose every frame, otherwise the lean is added on top of last frame's lean
+                    // whenever the Animator does not rewrite this bone - and the body keeps folding / spinning
+                    RestoreBone(av.BSpine, ref av.SpineTouched, av.SpineSet, ref av.SpineBase);
+                    if (av.Lean > 0.1f) av.BSpine.rotation = Quaternion.AngleAxis(av.Lean, seatRight) * av.BSpine.rotation;
+                    av.SpineSet = av.BSpine.localRotation;
+                    av.SpineTouched = true;
+                }
             }
 
             // shoulders / head: from the camera for the local player (so leaning moves your arms), from the body otherwise
@@ -897,7 +918,10 @@ namespace SecretJenga.Game
                 var delta = Quaternion.FromToRotation(bodyFwd, want);
                 delta = Quaternion.RotateTowards(Quaternion.identity, delta, 45f);
                 av.HeadExtra = Quaternion.Slerp(av.HeadExtra, delta, 1f - Mathf.Exp(-3f * Time.deltaTime));
+                RestoreBone(av.BHead, ref av.HeadTouched, av.HeadSet, ref av.HeadBase);
                 av.BHead.rotation = av.HeadExtra * av.BHead.rotation;
+                av.HeadSet = av.BHead.localRotation;
+                av.HeadTouched = true;
                 av.Label.position = av.BHead.position + Vector3.up * 8.5f;
             }
             else
