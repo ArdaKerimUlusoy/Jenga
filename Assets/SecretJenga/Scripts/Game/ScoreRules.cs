@@ -10,7 +10,11 @@ namespace SecretJenga.Game
     ///   dropped the tower ...................................... -3
     ///   secret task completed .................................. +1 .. +4 (harder task = more)
     ///   secret task at least half done (targets of 2+) ......... +1
+    ///   ran out of time without taking a block ................. -1 each time (stalling is not a strategy)
     ///   round abandoned (not enough players) ................... survival 0, tasks still count
+    ///
+    /// Fairness: a collapse in the first 3 s of a turn, before the new player touched a block, is blamed on the
+    /// previous player (their wobble), see TurnManager.ServerCollapseCulprit.
     ///
     /// Balance: dropping the tower swings you 6 points against a survivor, which is more than any single task is
     /// worth - so you can never "buy" a collapse by chasing your task, and the core rule (whoever drops it loses)
@@ -24,6 +28,7 @@ namespace SecretJenga.Game
         public const int Survived = 3;
         public const int Dropped = -3;
         public const int HalfTask = 1;
+        public const int TimeoutPenalty = -1;
 
         public static int DefaultTaskPoints(TaskKind kind)
         {

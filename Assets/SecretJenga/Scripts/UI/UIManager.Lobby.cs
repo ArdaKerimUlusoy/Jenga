@@ -30,7 +30,7 @@ namespace SecretJenga.UI
             var g = NewScreen(View.Lobby, "Lobby");
 
             // ---------------- left sheet: the seating list
-            var left = CenterCard(g, "Seating", new Vector2(780, 900), new Vector2(-420, 0));
+            var left = CenterCard(g, "Seating", new Vector2(780, 960), new Vector2(-420, 0));
             UIFactory.Caption(left, L.T("seating, tonight", "bu geceki oturma düzeni"));
             var head = UIFactory.Rect("Head", left);
             UIFactory.LE(head, 70);
@@ -62,7 +62,7 @@ namespace SecretJenga.UI
             }
 
             // ---------------- right sheet: the room
-            var right = CenterCard(g, "Room", new Vector2(780, 900), new Vector2(420, 0));
+            var right = CenterCard(g, "Room", new Vector2(780, 960), new Vector2(420, 0));
             UIFactory.Caption(right, L.T("the room", "oda"));
             _lobbyRoomName = UIFactory.Write(right, FontKind.Title, "Table", 48, Ink.Black, TextAnchor.MiddleLeft);
             _lobbyRoomName.horizontalOverflow = HorizontalWrapMode.Overflow;
@@ -80,7 +80,7 @@ namespace SecretJenga.UI
             UIFactory.LE(_lobbyCode, 62);
             UIFactory.Button(codeRow, L.T("copy", "kopyala"), CopyCode, ButtonStyle.Secondary, 28);
             _lobbyAddresses = UIFactory.Write(right, FontKind.Body, "", 20, Ink.Faded, TextAnchor.UpperLeft, FontStyle.Italic);
-            UIFactory.LE(_lobbyAddresses, 52);
+            UIFactory.LE(_lobbyAddresses, 46);
             UIFactory.Divider(right);
 
             var hs = UIFactory.Rect("HostSettings", right);
@@ -91,8 +91,8 @@ namespace SecretJenga.UI
             _lTurn = UIFactory.Stepper(hs, L.T("Time for each turn", "Tur başına süre"), 0, GameRules.MaxTurnSeconds, GameRules.DefaultTurnSeconds, 20, FormatTimer, _ => PushSettings());
             UIFactory.Divider(right);
 
-            _lobbyRules = UIFactory.Write(right, FontKind.Body, "", 23, Ink.Black, TextAnchor.UpperLeft);
-            UIFactory.LE(_lobbyRules, 200);
+            _lobbyRules = UIFactory.Write(right, FontKind.Body, "", 20, Ink.Black, TextAnchor.UpperLeft);
+            UIFactory.LE(_lobbyRules, 132);
 
             UIFactory.LE(UIFactory.Rect("Push", right), -1, -1, -1, 1);
             _lobbyStatus = UIFactory.Write(right, FontKind.Type, "", 21, Ink.Red, TextAnchor.MiddleLeft);
@@ -113,7 +113,7 @@ namespace SecretJenga.UI
         {
             var s = new SlotRefs();
             var root = UIFactory.Rect("Seat" + index, parent);
-            UIFactory.LE(root, 84);
+            UIFactory.LE(root, 76);
             s.Root = root.gameObject;
 
             s.Numeral = UIFactory.Write(root, FontKind.Title, Numerals[index], 30, Ink.Faded, TextAnchor.MiddleLeft);

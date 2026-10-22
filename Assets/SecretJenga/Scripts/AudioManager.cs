@@ -18,7 +18,7 @@ namespace SecretJenga
 
         const int PoolSize = 12;
         const int SpatialPoolSize = 6;
-        AudioSource _music, _slide, _strain;
+        AudioSource _music, _slide, _strain, _piano, _murmur;
         AudioSource[] _pool, _spatial;
         int _next, _nextSpatial;
         float _hitBudget;
@@ -34,6 +34,8 @@ namespace SecretJenga
             _music.playOnAwake = false;
             _music.spatialBlend = 0f;
 
+            _piano = MakeLoopSource();
+            _murmur = MakeLoopSource();
             _slide = MakeLoopSource();
             _strain = MakeLoopSource();
 
@@ -76,6 +78,8 @@ namespace SecretJenga
         {
             var a = SecretJengaAssets.Instance;
             if (a.music != null) { _music.clip = a.music; _music.Play(); }
+            if (a.saloonPiano != null) { _piano.clip = a.saloonPiano; _piano.Play(); }
+            if (a.saloonMurmur != null) { _murmur.clip = a.saloonMurmur; _murmur.Play(); }
             if (a.blockSlideLoop != null) { _slide.clip = a.blockSlideLoop; _slide.Play(); }
             if (a.woodStrainLoop != null) { _strain.clip = a.woodStrainLoop; _strain.Play(); }
             ApplyVolumes();
@@ -102,9 +106,13 @@ namespace SecretJenga
 
             if (_music != null)
             {
-                _music.volume = GameSettings.MusicVolume * Mathf.Lerp(0.22f, 0.5f, _droneTension);
+                // the old drone stays underneath and only comes up when the tower gets dangerous
+                _music.volume = GameSettings.MusicVolume * Mathf.Lerp(_piano != null && _piano.clip != null ? 0.05f : 0.22f, 0.45f, _droneTension);
                 _music.pitch = Mathf.Lerp(1f, 0.94f, _droneTension);
             }
+            // saloon piano and murmur: the room goes quieter as everyone holds their breath
+            if (_piano != null) _piano.volume = GameSettings.MusicVolume * Mathf.Lerp(0.42f, 0.1f, _droneTension);
+            if (_murmur != null) _murmur.volume = GameSettings.SfxVolume * Mathf.Lerp(0.22f, 0.04f, _droneTension);
 
             // Slide loop follows the speed of the held block; strain loop follows the tower wobble while it is handled.
             float slide = 0f, strain = 0f;

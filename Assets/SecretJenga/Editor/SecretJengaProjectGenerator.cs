@@ -322,6 +322,28 @@ namespace SecretJenga.EditorTools
             var dusk = ctx.M["M_WindowDusk"];
             dusk.SetTexture("_EmissionMap", T("T_Window_Dusk.png"));
             EditorUtility.SetDirty(dusk);
+            LitMat(ctx, "M_HatFelt", new Color(0.36f, 0.25f, 0.16f), 0.15f, null, null, null, 0f, null, true);
+            LitMat(ctx, "M_HatFeltBlack", new Color(0.09f, 0.08f, 0.075f), 0.2f, null, null, null, 0f, null, true);
+            LitMat(ctx, "M_HatBandLeather", new Color(0.16f, 0.09f, 0.05f), 0.45f);
+            LitMat(ctx, "M_Felt", new Color(0.12f, 0.3f, 0.17f), 0.05f);
+            LitMat(ctx, "M_ChipRed", new Color(0.6f, 0.1f, 0.08f), 0.5f);
+            LitMat(ctx, "M_ChipBlue", new Color(0.12f, 0.2f, 0.5f), 0.5f);
+            LitMat(ctx, "M_ChipWhite", new Color(0.88f, 0.85f, 0.78f), 0.5f);
+            LitMat(ctx, "M_CardFace", new Color(0.93f, 0.9f, 0.82f), 0.3f);
+            LitMat(ctx, "M_BrassDouble", new Color(0.8f, 0.6f, 0.3f), 0.72f, null, null, null, 1f, null, true);
+            LitMat(ctx, "M_GunMetal", new Color(0.12f, 0.12f, 0.13f), 0.55f, null, null, null, 0.9f);
+            LitMat(ctx, "M_PendantShade", new Color(0.18f, 0.24f, 0.18f), 0.55f, null, null, null, 0.4f, null, true);
+            {
+                var unlitShader = Shader.Find("Universal Render Pipeline/Unlit");
+                var shaft = LoadOrCreate(Mats + "/M_LightShaft.mat", () => new Material(unlitShader));
+                shaft.shader = unlitShader;
+                RuntimeArt.MakeTransparent(shaft);
+                shaft.SetTexture("_BaseMap", T("T_LightShaft.png"));
+                shaft.SetColor("_BaseColor", new Color(1f, 0.72f, 0.42f, 0.16f));
+                if (shaft.HasProperty("_Cull")) shaft.SetFloat("_Cull", 0f);
+                EditorUtility.SetDirty(shaft);
+                ctx.M["M_LightShaft"] = shaft;
+            }
             foreach (var poster in new[] { "T_Poster_Wanted_0", "T_Poster_Wanted_1", "T_Poster_Wanted_2", "T_Poster_Whiskey" })
                 LitMat(ctx, "M_" + poster.Substring(2), Color.white, 0.1f, T(poster + ".png"));
 
@@ -410,9 +432,9 @@ namespace SecretJenga.EditorTools
             SaveMesh(ctx, SaloonMeshes.Bottle(1f, "TLB_Bottle"), "TLB_Bottle");
             SaveMesh(ctx, SaloonMeshes.Bottle(0.8f, "TLB_BottleSmall"), "TLB_BottleSmall");
             SaveMesh(ctx, SaloonMeshes.ShotGlass(), "TLB_ShotGlass");
-            SaveMesh(ctx, SaloonMeshes.WagonWheel(6.2f), "TLB_WagonWheel");
-            SaveMesh(ctx, SaloonMeshes.Candles(6.2f, 8), "TLB_Candles");
-            SaveMesh(ctx, SaloonMeshes.Flames(6.2f, 8), "TLB_Flames");
+            SaveMesh(ctx, SaloonMeshes.WagonWheel(8.6f), "TLB_WagonWheel");
+            SaveMesh(ctx, SaloonMeshes.Candles(8.6f, 10), "TLB_Candles");
+            SaveMesh(ctx, SaloonMeshes.Flames(8.6f, 10), "TLB_Flames");
             SaveMesh(ctx, ProceduralMeshes.Cylinder(0.12f, CeilingY - SeatLayout.LampHeight, 8, "TLB_Chain"), "TLB_Chain");
             SaveMesh(ctx, SaloonMeshes.LanternFrame(), "TLB_LanternFrame");
             SaveMesh(ctx, SaloonMeshes.LanternGlass(), "TLB_LanternGlass");
@@ -426,6 +448,19 @@ namespace SecretJenga.EditorTools
             SaveMesh(ctx, SaloonMeshes.Quad(7.2f, 10.1f, "TLB_Poster"), "TLB_Poster");
             SaveMesh(ctx, SaloonMeshes.Quad(36f, 13.5f, "TLB_Sign"), "TLB_Sign");
             SaveMesh(ctx, ProceduralMeshes.BeveledBox(new Vector3(1.4f, 35f, 1.8f), 0.15f, false, new Vector2(8f, 8f), "TLB_DoorPost"), "TLB_DoorPost");
+            SaveMesh(ctx, SaloonMeshes.Hat(), "TLB_Hat");
+            SaveMesh(ctx, SaloonMeshes.HatBand(), "TLB_HatBand");
+            SaveMesh(ctx, SaloonMeshes.ChipStack(6), "TLB_Chips6");
+            SaveMesh(ctx, SaloonMeshes.ChipStack(11), "TLB_Chips11");
+            SaveMesh(ctx, SaloonMeshes.Card(), "TLB_Card");
+            SaveMesh(ctx, SaloonMeshes.Spittoon(), "TLB_Spittoon");
+            SaveMesh(ctx, SaloonMeshes.Rifle(), "TLB_Rifle");
+            SaveMesh(ctx, SaloonMeshes.PendantLamp(), "TLB_PendantLamp");
+            SaveMesh(ctx, SaloonMeshes.PendantGlass(), "TLB_PendantGlass");
+            SaveMesh(ctx, SaloonMeshes.ShaftQuad(), "TLB_ShaftQuad");
+            SaveMesh(ctx, ProceduralMeshes.Cylinder(5.6f, 0.12f, 32, "TLB_FeltDisc"), "TLB_FeltDisc");
+            SaveMesh(ctx, ProceduralMeshes.BeveledBox(new Vector3(2.6f, CeilingY - SeatLayout.FloorY - 2.6f, 2.6f), 0.25f, false, new Vector2(8f, 8f), "TLB_Post"), "TLB_Post");
+            SaveMesh(ctx, ProceduralMeshes.Cylinder(0.25f, 1.6f, 8, "TLB_Peg"), "TLB_Peg");
             SaveMesh(ctx, ProceduralMeshes.BeveledBox(new Vector3(20.6f, 1.6f, 2f), 0.15f, false, new Vector2(8f, 8f), "TLB_DoorHeader"), "TLB_DoorHeader");
             SaveMesh(ctx, ProceduralMeshes.Pipe(0.7f, RoomHalf * 2f), "TLB_PipeLong");
             SaveMesh(ctx, ProceduralMeshes.Pipe(0.45f, RoomHalf * 2f), "TLB_PipeThin");
@@ -660,6 +695,45 @@ namespace SecretJenga.EditorTools
                     Part(props, "Glass", me["TLB_ShotGlass"], M["M_BottleClear"], at + new Vector3(R(-3f, 3f), 15f, R(-3f, 3f)), Vector3.zero);
                 }
 
+                // ---------------- the lived-in details
+                // timber posts under the beams
+                float postH = CeilingY - F - 2.6f;
+                foreach (var pp in new[] { new Vector2(-24f, -34f), new Vector2(24f, -34f), new Vector2(-24f, 34f), new Vector2(24f, 34f) })
+                    Part(props, "Post", me["TLB_Post"], M["M_DarkWood"], new Vector3(pp.x, F + postH * 0.5f, pp.y), Vector3.zero);
+
+                // hats on wall pegs by the door
+                for (int i = 0; i < 4; i++)
+                {
+                    var peg = new Vector3(-50f + i * 6.5f, F + 40f, -RoomHalf + 1.4f);
+                    Part(props, "Peg", me["TLB_Peg"], M["M_DarkWood"], peg, new Vector3(90f, 0f, 0f));
+                    if (i == 2) continue; // an empty peg
+                    var hatAt = peg + new Vector3(0f, -2.8f, 1.6f);
+                    var hatRot = new Vector3(-72f, 0f, R(-12f, 12f));
+                    Part(props, "Hat", me["TLB_Hat"], M[i % 2 == 0 ? "M_HatFelt" : "M_HatFeltBlack"], hatAt, hatRot);
+                    Part(props, "HatBand", me["TLB_HatBand"], M["M_HatBandLeather"], hatAt, hatRot);
+                }
+
+                // a rifle over the piano, a spittoon by the bar rail
+                Part(props, "Rifle", me["TLB_Rifle"], M["M_GunMetal"], new Vector3(RoomHalf - 1.2f, F + 44f, -30f), new Vector3(0f, 90f, 4f));
+                Part(props, "Spittoon", me["TLB_Spittoon"], M["M_BrassDouble"], new Vector3(barX + 22f, F, barZ - 9f), Vector3.zero);
+                Part(props, "Spittoon", me["TLB_Spittoon"], M["M_BrassDouble"], new Vector3(barX - 26f, F, barZ - 9.5f), Vector3.zero);
+
+                // poker on the side tables: green felt, chips and a few cards
+                foreach (var t in new[] { new Vector3(-40f, 0, -30f), new Vector3(40f, 0, 12f) })
+                {
+                    var top = new Vector3(t.x, F + 15.06f, t.z);
+                    Part(props, "Felt", me["TLB_FeltDisc"], M["M_Felt"], top, Vector3.zero, false);
+                    string[] chipMats = { "M_ChipRed", "M_ChipBlue", "M_ChipWhite" };
+                    for (int k = 0; k < 4; k++)
+                    {
+                        float a = R(0f, 360f) * Mathf.Deg2Rad;
+                        var at = top + new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a)) * R(2f, 4.2f) + Vector3.up * 0.06f;
+                        Part(props, "Chips", me[k % 2 == 0 ? "TLB_Chips6" : "TLB_Chips11"], M[chipMats[k % 3]], at, Vector3.zero);
+                    }
+                    for (int k = 0; k < 5; k++)
+                        Part(props, "Card", me["TLB_Card"], M["M_CardFace"], top + new Vector3(R(-2.5f, 2.5f), 0.08f + k * 0.022f, R(-2.5f, 2.5f)), new Vector3(0f, R(0f, 360f), 0f), false);
+                }
+
                 ctx.EnvPrefab = PrefabUtility.SaveAsPrefabAsset(root, Prefabs + "/TLB_Room.prefab");
             }
             finally { Object.DestroyImmediate(root); }
@@ -832,6 +906,8 @@ namespace SecretJenga.EditorTools
             r.missionComplete = AC("SFX_MissionComplete"); r.turnStart = AC("SFX_TurnStart"); r.timerTick = AC("SFX_TimerTick");
             r.win = AC("SFX_Win"); r.lose = AC("SFX_Lose"); r.countdown = AC("SFX_Countdown"); r.error = AC("SFX_Error");
             r.cardPlayed = AC("SFX_CardPlayed");
+            r.saloonPiano = AC("MUS_Saloon_Piano_Loop"); r.saloonMurmur = AC("SFX_Saloon_Murmur_Loop");
+            r.lighter = AC("SFX_Lighter"); r.exhale = AC("SFX_Exhale"); r.gulp = AC("SFX_Gulp");
             EditorUtility.SetDirty(r);
             ctx.Registry = r;
 
@@ -978,6 +1054,65 @@ namespace SecretJenga.EditorTools
             Lantern(ctx, lanterns, new Vector3(-24f, ly, -RoomHalf + 0.8f), 0f);
             Lantern(ctx, lanterns, new Vector3(-40f, ly - 2f, RoomHalf - 2.2f), 180f);
             Lantern(ctx, lanterns, new Vector3(24f, ly - 2f, RoomHalf - 2.2f), 180f);
+
+            // pendant oil lamps over the bar (glow only, the lanterns do the lighting)
+            var pendants = new GameObject("Bar Pendant Lamps").transform;
+            foreach (var x in new[] { -32f, -8f, 16f })
+            {
+                var at = new Vector3(x, CeilingY - 7f, RoomHalf - 16.5f);
+                var pl = Part(pendants, "PendantLamp", ctx.Mesh["TLB_PendantLamp"], ctx.M["M_PendantShade"], at, Vector3.zero);
+                var pg = Part(pendants, "PendantGlass", ctx.Mesh["TLB_PendantGlass"], ctx.M["M_LanternGlass"], at, Vector3.zero, false);
+                pl.isStatic = pg.isStatic = false;
+            }
+
+            // dusty sun shafts falling through the west windows
+            var shafts = new GameObject("Sun Shafts").transform;
+            var sunDir = Quaternion.Euler(26, 72, 0) * Vector3.forward;
+            foreach (var z in new[] { -24f, 20f })
+            {
+                var start = new Vector3(-RoomHalf + 1f, SeatLayout.FloorY + 33f, z);
+                var side = Vector3.Cross(sunDir, Vector3.up).normalized;
+                for (int k = 0; k < 2; k++)
+                {
+                    var face = k == 0 ? side : Vector3.Cross(sunDir, side).normalized;   // two crossed planes so it never looks flat
+                    var sh = Part(shafts, "Shaft", ctx.Mesh["TLB_ShaftQuad"], ctx.M["M_LightShaft"], start + sunDir * 34f, Vector3.zero, false);
+                    sh.transform.rotation = Quaternion.LookRotation(face, -sunDir);
+                    sh.transform.localScale = new Vector3(13f, 68f, 1f);
+                    sh.isStatic = false;
+                }
+            }
+
+            // dust motes floating in the warm light
+            var dustGo = new GameObject("Dust Motes");
+            dustGo.transform.position = new Vector3(0f, 8f, 0f);
+            var dps = dustGo.AddComponent<ParticleSystem>();
+            var dmain = dps.main;
+            dmain.loop = true;
+            dmain.prewarm = true;
+            dmain.startLifetime = new ParticleSystem.MinMaxCurve(10f, 18f);
+            dmain.startSpeed = new ParticleSystem.MinMaxCurve(0.02f, 0.12f);
+            dmain.startSize = new ParticleSystem.MinMaxCurve(0.06f, 0.16f);
+            dmain.startColor = new Color(1f, 0.85f, 0.6f, 0.45f);
+            dmain.maxParticles = 600;
+            dmain.simulationSpace = ParticleSystemSimulationSpace.World;
+            var dem = dps.emission;
+            dem.rateOverTime = 36f;
+            var dshape = dps.shape;
+            dshape.shapeType = ParticleSystemShapeType.Box;
+            dshape.scale = new Vector3(110f, 40f, 110f);
+            var dnoise = dps.noise;
+            dnoise.enabled = true;
+            dnoise.strength = 0.12f;
+            dnoise.frequency = 0.15f;
+            var dcol = dps.colorOverLifetime;
+            dcol.enabled = true;
+            var dgrad = new Gradient();
+            dgrad.SetKeys(new[] { new GradientColorKey(Color.white, 0f), new GradientColorKey(Color.white, 1f) },
+                          new[] { new GradientAlphaKey(0f, 0f), new GradientAlphaKey(1f, 0.2f), new GradientAlphaKey(1f, 0.8f), new GradientAlphaKey(0f, 1f) });
+            dcol.color = dgrad;
+            var dr = dustGo.GetComponent<ParticleSystemRenderer>();
+            dr.sharedMaterial = ctx.M["M_Dust"];
+            dr.shadowCastingMode = ShadowCastingMode.Off;
 
             // low dusk sun through the west windows (walls do not cast shadows, so it fills the room warmly)
             var sun = new GameObject("Dusk Sun").AddComponent<Light>();

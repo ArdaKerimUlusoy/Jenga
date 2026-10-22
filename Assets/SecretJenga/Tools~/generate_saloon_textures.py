@@ -228,3 +228,21 @@ for i, (n, r) in enumerate([("BLACK JACK KETCH", "$500"), ("ROSIE McGRAW", "$350
     wanted(i, n, r)
 whiskey_sign()
 window_dusk()
+
+
+def light_shaft():
+    """Soft dusty beam (white, alpha) for the sun shafts through the windows - tinted by the material."""
+    w, h = 256, 512
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    across = np.clip(np.sin(np.clip(xx / (w - 1), 0, 1) * math.pi), 0, 1) ** 1.6
+    along = np.clip(1.0 - yy / h, 0, 1) ** 0.8 * np.clip(yy / (h * 0.08), 0, 1)
+    dust = 0.75 + 0.25 * noise2d(h, w, 12, 3, 5)
+    a = across * along * dust
+    rgba = np.zeros((h, w, 4), np.float32)
+    rgba[..., :3] = 255
+    rgba[..., 3] = a * 255
+    Image.fromarray(np.clip(rgba, 0, 255).astype(np.uint8), "RGBA").save(os.path.join(OUT, "T_LightShaft.png"), optimize=True)
+    print("wrote T_LightShaft.png")
+
+
+light_shaft()

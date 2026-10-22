@@ -193,6 +193,64 @@ namespace SecretJenga
             return ProceduralMeshes.Combine("TLB_SideTable", (top, TRS(new Vector3(0, h, 0), Vector3.zero)), (leg, Matrix4x4.identity));
         }
 
+        /// <summary>Cowboy hat hanging on a wall peg (pivot at the brim centre).</summary>
+        public static Mesh Hat()
+        {
+            var crown = ProceduralMeshes.Lathe(new[] { new Vector2(1.95f, 0f), new Vector2(2.0f, 0.6f), new Vector2(1.9f, 1.9f), new Vector2(1.4f, 2.5f), new Vector2(0f, 2.3f) }, 24, false, false, "crown");
+            var brim = ProceduralMeshes.Lathe(new[] { new Vector2(1.9f, 0.05f), new Vector2(3.0f, 0.2f), new Vector2(3.7f, 0.75f), new Vector2(3.75f, 0.85f), new Vector2(3.6f, 0.82f), new Vector2(2.95f, 0.12f), new Vector2(1.9f, -0.05f) }, 32, false, false, "brim");
+            return ProceduralMeshes.Combine("TLB_Hat", (crown, Matrix4x4.identity), (brim, Matrix4x4.identity));
+        }
+
+        public static Mesh HatBand() => ProceduralMeshes.Lathe(new[] { new Vector2(2.02f, 0.15f), new Vector2(2.06f, 0.2f), new Vector2(2.06f, 0.55f), new Vector2(2.02f, 0.6f) }, 24, false, false, "TLB_HatBand");
+
+        /// <summary>A stack of poker chips (pivot at the bottom). 1 chip = 3.3 mm.</summary>
+        public static Mesh ChipStack(int chips)
+        {
+            var chip = ProceduralMeshes.Cylinder(0.78f, 0.066f, 16, "chip");
+            var parts = new System.Collections.Generic.List<(Mesh, Matrix4x4)>();
+            var r = new System.Random(chips * 31);
+            for (int i = 0; i < chips; i++)
+                parts.Add((chip, TRS(new Vector3((float)r.NextDouble() * 0.06f, 0.033f + i * 0.068f, (float)r.NextDouble() * 0.06f), Vector3.zero)));
+            return ProceduralMeshes.Combine("TLB_Chips" + chips, parts.ToArray());
+        }
+
+        /// <summary>A playing card lying flat (pivot at its centre).</summary>
+        public static Mesh Card() => ProceduralMeshes.BeveledBox(new Vector3(1.26f, 0.02f, 1.76f), 0.005f, false, new Vector2(1.26f, 1.76f), "TLB_Card");
+
+        /// <summary>Brass spittoon (pivot at the bottom).</summary>
+        public static Mesh Spittoon() => ProceduralMeshes.Lathe(new[]
+        {
+            new Vector2(0f, 0f), new Vector2(1.9f, 0f), new Vector2(2.4f, 0.8f), new Vector2(2.45f, 1.9f), new Vector2(1.6f, 2.6f), new Vector2(1.0f, 2.8f),
+            new Vector2(1.4f, 3.3f), new Vector2(2.0f, 3.5f), new Vector2(1.8f, 3.55f), new Vector2(0.9f, 3.0f), new Vector2(0f, 2.9f)
+        }, 28, false, false, "TLB_Spittoon");
+
+        /// <summary>Old rifle (pivot at its centre, lying along X).</summary>
+        public static Mesh Rifle()
+        {
+            var stock = ProceduralMeshes.BeveledBox(new Vector3(6.5f, 1.3f, 0.7f), 0.2f, false, new Vector2(4f, 4f), "stock");
+            var body = ProceduralMeshes.BeveledBox(new Vector3(4f, 0.7f, 0.6f), 0.12f, false, new Vector2(4f, 4f), "body");
+            var barrel = ProceduralMeshes.Pipe(0.17f, 12f);
+            var fore = ProceduralMeshes.BeveledBox(new Vector3(6f, 0.55f, 0.5f), 0.15f, false, new Vector2(4f, 4f), "fore");
+            return ProceduralMeshes.Combine("TLB_Rifle",
+                (stock, TRS(new Vector3(-8.5f, -0.35f, 0f), new Vector3(0, 0, 6f))),
+                (body, TRS(new Vector3(-3.5f, 0f, 0f), Vector3.zero)),
+                (fore, TRS(new Vector3(1.5f, -0.1f, 0f), Vector3.zero)),
+                (barrel, TRS(new Vector3(4f, 0.2f, 0f), Vector3.zero)));
+        }
+
+        /// <summary>Small hanging oil lamp shade + chimney (pivot at the top hook).</summary>
+        public static Mesh PendantLamp()
+        {
+            var shade = ProceduralMeshes.Lathe(new[] { new Vector2(0.2f, 0f), new Vector2(0.5f, -0.3f), new Vector2(1.6f, -1.2f), new Vector2(1.7f, -1.35f), new Vector2(1.55f, -1.32f), new Vector2(0.45f, -0.45f) }, 24, false, false, "shade");
+            var chain = ProceduralMeshes.Cylinder(0.06f, 6f, 6, "chain");
+            return ProceduralMeshes.Combine("TLB_PendantLamp", (shade, Matrix4x4.identity), (chain, TRS(new Vector3(0, 3f, 0), Vector3.zero)));
+        }
+
+        public static Mesh PendantGlass() => ProceduralMeshes.Lathe(new[] { new Vector2(0f, -0.6f), new Vector2(0.55f, -0.75f), new Vector2(0.7f, -1.3f), new Vector2(0.5f, -1.9f), new Vector2(0f, -2.0f) }, 16, false, false, "TLB_PendantGlass");
+
+        /// <summary>A soft light beam: a quad 1 x 1 in XY (pivot centre) - stretched by the transform.</summary>
+        public static Mesh ShaftQuad() => Quad(1f, 1f, "TLB_ShaftQuad");
+
         /// <summary>Hanging sign / poster quad (pivot at the centre, facing -Z). Size in units.</summary>
         public static Mesh Quad(float w, float h, string name)
         {

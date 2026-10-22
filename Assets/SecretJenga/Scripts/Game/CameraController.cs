@@ -7,7 +7,9 @@ namespace SecretJenga.Game
     /// <summary>
     /// Seated first-person camera. The player never leaves their chair: the head is anchored at the seat's eye
     /// position and can only look around the tabletop and lean a little.
-    ///   Right mouse drag      look around (limited yaw / pitch)
+    ///   Mouse                 look around directly (cursor locked, the hand aims at the screen centre).
+    ///                         While you pull or carry a block the view holds still and the mouse moves the hand.
+    ///   hold Left Alt         free the cursor (to click the HUD)
     ///   A / D  (or Q / E)     lean left / right around the table edge (limited)
     ///   W / S  or mouse wheel lean in towards the tower / sit back
     ///   Middle mouse          re-center the view
@@ -20,18 +22,19 @@ namespace SecretJenga.Game
         public static CameraController Instance { get; private set; }
 
         [Header("Look limits (degrees, relative to looking at the tower)")]
-        public float maxYaw = 65f;
-        public float minPitch = -30f;
-        public float maxPitch = 28f;
+        public float maxYaw = 110f;
+        public float minPitch = -38f;
+        public float maxPitch = 40f;
         [Header("Lean")]
         [Tooltip("How far (degrees around the table) the head can lean sideways.")]
         public float maxLeanAngle = 24f;
         [Tooltip("How far (units) the head can lean in towards the tower.")]
-        public float maxLeanIn = 3.2f;
-        public float fieldOfView = 58f;
+        public float maxLeanIn = 4.5f;
+        public float fieldOfView = 62f;
 
         Camera _cam;
-        float _yaw, _pitch, _lean, _leanIn, _leanTarget, _leanInTarget, _shakeTime, _shakeAmount, _focusY = 2f, _rise, _towerTop;
+        float _yaw, _pitch, _lean, _leanIn, _leanTarget, _leanInTarget, _shakeTime, _shakeAmount, _focusY = 2f, _rise, _towerTop, _turnLean;
+        bool _locked;
         Vector3 _focusShift;
         int _seat;
 
@@ -50,6 +53,8 @@ namespace SecretJenga.Game
 
         void OnDestroy()
         {
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
             if (Instance == this) Instance = null;
         }
 
@@ -82,13 +87,26 @@ namespace SecretJenga.Game
             var kb = Keyboard.current;
             bool inputAllowed = inRound && !UIManager.BlocksGameInput;
 
+            // cursor: locked while playing (the mouse looks), free in menus, overlays or while Alt is held
+            bool playingPhase = inRoom && (game.Phase.Value == GamePhase.Playing || game.Phase.Value == GamePhase.Countdown);
+            bool altFree = kb != null && kb.leftAltKey.isPressed;
+            bool wantLock = playingPhase && !UIManager.BlocksGameInput && !altFree && Application.isFocused;
+            if (wantLock != _locked)
+            {
+                _locked = wantLock;
+                Cursor.lockState = wantLock ? CursorLockMode.Locked : CursorLockMode.None;
+                Cursor.visible = !wantLock;
+            }
+
             if (inputAllowed && mouse != null)
             {
-                if (mouse.rightButton.isPressed)
+                var bic = BlockInteractionController.Instance;
+                bool handHasMouse = bic != null && bic.Handling;   // pulling / carrying: the mouse moves the hand, not the head
+                if (_locked && !handHasMouse)
                 {
                     var d = mouse.delta.ReadValue();
-                    _yaw += d.x * 0.12f * sens;
-                    _pitch -= d.y * 0.10f * sens;
+                    _yaw += d.x * 0.075f * sens;
+                    _pitch -= d.y * 0.065f * sens;
                 }
                 if (mouse.middleButton.wasPressedThisFrame) Recenter();
                 float scroll = mouse.scroll.ReadValue().y;
@@ -137,6 +155,9 @@ namespace SecretJenga.Game
             }
             // rise out of the chair while placing on top (eased, so it never snaps)
             _rise = Mathf.Lerp(_rise, carryingMine ? 1f : 0f, 1f - Mathf.Exp(-3.2f * dt));
+            // on your own turn you lean in over the table
+            bool myTurnNow = inRoom && game.Turns != null && game.Turns.IsLocalPlayersTurn && game.Phase.Value == GamePhase.Playing;
+            _turnLean = Mathf.Lerp(_turnLean, myTurnNow ? 1f : 0f, 1f - Mathf.Exp(-2.5f * dt));
 
             // head position: the seat's eye point, leaned around the table edge and towards the tower
             var eye = SeatLayout.EyePosition(_seat);
@@ -147,7 +168,7 @@ namespace SecretJenga.Game
             var leanRot = Quaternion.AngleAxis(-_lean * maxLeanAngle, Vector3.up);
             var pos = leanRot * new Vector3(eye.x, 0f, eye.z);
             var inward3 = -pos.normalized;
-            pos += inward3 * (_leanIn * maxLeanIn + _rise * 1.8f);
+            pos += inward3 * (_leanIn * maxLeanIn + _rise * 1.8f + _turnLean * 2.4f);
             pos.y = eye.y - _leanIn * 1.2f;
 
             // breathing

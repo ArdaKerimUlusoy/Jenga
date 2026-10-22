@@ -59,6 +59,16 @@ namespace SecretJenga.Game
         public AtmosphereSync Atmosphere { get; private set; }
 
         int _nextJoinOrder;
+        /// <summary>Host: penalty points collected this round, per player auth id.</summary>
+        readonly Dictionary<string, int> _penalties = new Dictionary<string, int>();
+
+        public void ServerAddPenalty(ulong clientId)
+        {
+            if (!IsServer || !TryGetPlayer(clientId, out var p)) return;
+            var auth = p.AuthId.ToString();
+            _penalties.TryGetValue(auth, out var v);
+            _penalties[auth] = v + ScoreRules.TimeoutPenalty;
+        }
 
         public double ServerNow => NetworkManager != null ? NetworkManager.ServerTime.Time : 0;
 
@@ -475,6 +485,7 @@ namespace SecretJenga.Game
                 }
             }
             RoundNumber.Value++;
+            _penalties.Clear();
 
             var order = new List<ulong>();
             foreach (var p in Players) if (p.IsConnected) order.Add(p.ClientId);
@@ -535,8 +546,9 @@ namespace SecretJenga.Game
                 // points: survival + secret task, added to the match total
                 int survival = ScoreRules.SurvivalPoints(kind, p.ClientId == loser, p.IsConnected);
                 int taskPts = ScoreRules.TaskPoints(task);
+                _penalties.TryGetValue(auth, out int penalty);
                 int idx = IndexByClient(p.ClientId);
-                int total = p.Score + survival + taskPts;
+                int total = p.Score + survival + taskPts + penalty;
                 if (idx >= 0)
                 {
                     var upd = Players[idx];
@@ -548,6 +560,7 @@ namespace SecretJenga.Game
                 {
                     SurvivalPoints = survival,
                     TaskPoints = taskPts,
+                    PenaltyPoints = penalty,
                     TotalScore = total,
                     ClientId = p.ClientId,
                     Name = p.Name,
@@ -568,7 +581,7 @@ namespace SecretJenga.Game
             {
                 if (!p.IsBot || !p.IsConnected) continue;
                 if (p.ClientId == loser) HandSync.ServerBotGesture(p.ClientId, UnityEngine.Random.value < 0.6f ? Gesture.MiddleFinger : Gesture.Wave);
-                else if (loser != ulong.MaxValue) HandSync.ServerBotGesture(p.ClientId, UnityEngine.Random.value < 0.6f ? Gesture.Beer : Gesture.ThumbsUp);
+                else if (loser != ulong.MaxValue) HandSync.ServerBotGesture(p.ClientId, UnityEngine.Random.value < 0.6f ? Gesture.Beer : Gesture.Smoke);
             }
         }
 

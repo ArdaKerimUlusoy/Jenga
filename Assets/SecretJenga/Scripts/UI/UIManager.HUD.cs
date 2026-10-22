@@ -38,7 +38,7 @@ namespace SecretJenga.UI
         Button _cardButton;
         float _cardLift;
         // cursor prompt
-        RectTransform _promptRt;
+        RectTransform _promptRt, _crosshair;
         Text _promptText;
         int _lastTick = -1;
         int _lastCountdown = -1;
@@ -104,8 +104,8 @@ namespace SecretJenga.UI
             _hudHint = UIFactory.Write(g.transform, FontKind.Body, "", 27, Ink.Bone, TextAnchor.MiddleCenter, FontStyle.Italic);
             UIFactory.Place(_hudHint.rectTransform, new Vector2(0.5f, 0), new Vector2(0.5f, 0), new Vector2(0, 78), new Vector2(1100, 44));
             var controls = UIFactory.Write(g.transform, FontKind.Type,
-                L.T("hold LMB  pull   RMB  look   A/D  lean   W/S  closer   F  knock   C  card   TAB  task   ESC\n1  OK    2  thumbs up    3  middle finger    4  sip of beer    5  wave    6  rock on",
-                    "sol tık basılı  çek   sağ tık  bak   A/D  eğil   W/S  yaklaş   F  masaya vur   C  kart   TAB  görev   ESC\n1  tamam    2  başparmak    3  orta parmak    4  bira yudumu    5  el salla    6  rock"), 15, Ink.BoneFaint, TextAnchor.MiddleCenter);
+                L.T("mouse  look   hold LMB  pull   ALT  free cursor   A/D  lean   W/S  closer   F  knock   C  card   TAB  task   ESC\n1  OK    2  smoke    3  middle finger    4  sip of beer    5  wave    6  rock on",
+                    "fare  bak   sol tık basılı  çek   ALT  imleç   A/D  eğil   W/S  yaklaş   F  masaya vur   C  kart   TAB  görev   ESC\n1  tamam    2  sigara    3  orta parmak    4  bira yudumu    5  el salla    6  rock"), 15, Ink.BoneFaint, TextAnchor.MiddleCenter);
             UIFactory.Place(controls.rectTransform, new Vector2(0.5f, 0), new Vector2(0.5f, 0), new Vector2(0, 30), new Vector2(1300, 44));
 
             // ---------------- cursor prompt (written beside the hand)
@@ -115,6 +115,13 @@ namespace SecretJenga.UI
             _promptRt.anchorMin = _promptRt.anchorMax = Vector2.zero;
             _promptRt.sizeDelta = new Vector2(320, 30);
             _promptText.gameObject.SetActive(false);
+
+            // aiming dot (the cursor is locked: the hand aims where this dot is)
+            var dot = UIFactory.Image(g.transform, "Crosshair", UIFactory.CircleSprite, new Color(Ink.Bone.r, Ink.Bone.g, Ink.Bone.b, 0.75f), false);
+            dot.raycastTarget = false;
+            _crosshair = dot.rectTransform;
+            _crosshair.anchorMin = _crosshair.anchorMax = Vector2.zero;
+            _crosshair.sizeDelta = new Vector2(9, 9);
 
             // ---------------- banner + countdown (centre, transient)
             var banner = UIFactory.Write(g.transform, FontKind.Title, "", 86, Ink.Bone, TextAnchor.MiddleCenter);
@@ -536,9 +543,18 @@ namespace SecretJenga.UI
         void UpdateCursorPrompt()
         {
             var bic = BlockInteractionController.Instance;
-            var mouse = Mouse.current;
             var p = bic != null ? bic.CursorPrompt : BlockInteractionController.Prompt.None;
-            bool show = p != BlockInteractionController.Prompt.None && p != BlockInteractionController.Prompt.Grab && mouse != null && !BlocksGameInput;
+            if (_crosshair != null)
+            {
+                bool dotOn = bic != null && !BlocksGameInput;
+                if (_crosshair.gameObject.activeSelf != dotOn) _crosshair.gameObject.SetActive(dotOn);
+                if (dotOn)
+                {
+                    RectTransformUtility.ScreenPointToLocalPointInRectangle(_root, bic.PointerScreen, null, out var lp);
+                    _crosshair.anchoredPosition = lp + _root.rect.size * 0.5f;
+                }
+            }
+            bool show = p != BlockInteractionController.Prompt.None && p != BlockInteractionController.Prompt.Grab && bic != null && !BlocksGameInput;
             if (_promptText.gameObject.activeSelf != show) _promptText.gameObject.SetActive(show);
             if (!show) return;
             switch (p)
@@ -547,7 +563,7 @@ namespace SecretJenga.UI
                 case BlockInteractionController.Prompt.Committed: _promptText.text = L.T("you touched another one", "başka birine dokundun"); break;
             }
             _promptText.color = Ink.RedBright;
-            RectTransformUtility.ScreenPointToLocalPointInRectangle(_root, mouse.position.ReadValue(), null, out var local);
+            RectTransformUtility.ScreenPointToLocalPointInRectangle(_root, bic.PointerScreen, null, out var local);
             var size = _root.rect.size;
             _promptRt.anchoredPosition = local + size * 0.5f + new Vector2(26, -18);
         }

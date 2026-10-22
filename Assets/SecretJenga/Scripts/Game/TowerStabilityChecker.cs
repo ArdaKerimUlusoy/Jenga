@@ -92,7 +92,7 @@ namespace SecretJenga.Game
                     return;
                 }
                 _collapseReported = true;
-                ulong culprit = _game.Turns.ActiveClientId.Value;
+                ulong culprit = _game.Turns.ServerCollapseCulprit();
                 CollapseClientRpc(fallenAt, fallen);
                 _game.ServerOnTowerCollapsed(culprit);
             }

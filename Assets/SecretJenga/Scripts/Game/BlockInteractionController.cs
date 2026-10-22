@@ -22,6 +22,20 @@ namespace SecretJenga.Game
 
         public string Hint { get; private set; } = "";
 
+        /// <summary>
+        /// Where the hand aims, in screen pixels. The cursor is locked and the mouse turns the head, so normally this
+        /// is the screen centre; while you pull or carry a block the head holds still and the mouse moves this point.
+        /// Holding Left Alt uses the real mouse cursor.
+        /// </summary>
+        public Vector2 PointerScreen { get; private set; }
+        /// <summary>True while the local player pulls or carries a block (the mouse drives the hand, not the view).</summary>
+        public bool Handling { get; private set; }
+        Vector2 _pointer;
+        // While pulling / carrying, the hand target lives in WORLD space and only the mouse moves it. (Ray-casting a
+        // fixed screen point every frame made the block crawl on its own whenever the camera drifted or leaned.)
+        Vector3 _handWorld;
+        TurnStage _handStage = TurnStage.None;
+
         public enum Prompt { None, Grab, Forbidden, Committed }
         /// <summary>Small prompt next to the cursor (HUD reads this).</summary>
         public Prompt CursorPrompt { get; private set; }
@@ -43,7 +57,6 @@ namespace SecretJenga.Game
         MaterialPropertyBlock _mpb;
         GameObject _cursor;
         MeshRenderer _cursorRenderer;
-        bool _cursorHidden;
 
         void Awake()
         {
@@ -55,7 +68,6 @@ namespace SecretJenga.Game
 
         void OnDestroy()
         {
-            if (_cursorHidden) Cursor.visible = true;
             if (Instance == this) Instance = null;
         }
 
@@ -100,17 +112,63 @@ namespace SecretJenga.Game
                 CursorPrompt = Prompt.None;
                 HasHoverPoint = false;
                 HasTablePoint = false;
-                if (_cursorHidden) { Cursor.visible = true; _cursorHidden = false; }
+                Handling = false;
+                PointerScreen = _pointer = new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
                 return;
             }
-
-            // the hand is the cursor: hide the OS pointer while playing (menus bring it back)
-            bool wantHidden = !UIManager.BlocksGameInput;
-            if (wantHidden != _cursorHidden) { Cursor.visible = !wantHidden; _cursorHidden = wantHidden; }
 
             var turns = game.Turns;
             var stage = turns.Stage.Value;
             bool myTurn = turns.IsLocalPlayersTurn;
+
+            // ---- the aiming point (see PointerScreen)
+            {
+                var md = Mouse.current;
+                var kbd = Keyboard.current;
+                var center = new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
+                if (_pointer == Vector2.zero) _pointer = center;
+                Handling = myTurn && (stage == TurnStage.Dragging || stage == TurnStage.Carrying);
+                bool alt = kbd != null && kbd.leftAltKey.isPressed;
+                if (Handling)
+                {
+                    var held = JengaBlock.Find(turns.HeldBlockId.Value);
+                    if (_handStage != stage)
+                    {
+                        // start of a pull: the point you grabbed; start of a carry: above the lifted block
+                        _handStage = stage;
+                        if (stage == TurnStage.Dragging) _handWorld = turns.CursorPoint.Value.sqrMagnitude > 1e-4f ? turns.CursorPoint.Value : (held != null ? held.transform.position : Vector3.zero);
+                        else if (held != null) _handWorld = held.transform.position;
+                        if (stage == TurnStage.Carrying) _handWorld.y = turns.PlaceCenter.Value.y + JengaDims.BlockHeight * 2.5f;
+                    }
+                    if (md != null && !alt && !UIManager.BlocksGameInput)
+                    {
+                        // mouse delta -> movement on the table plane, relative to where you look (camera motion has no effect)
+                        var d = md.delta.ReadValue();
+                        var fwd = Vector3.ProjectOnPlane(cam.transform.forward, Vector3.up).normalized;
+                        var rgt = Vector3.Cross(Vector3.up, fwd).normalized;
+                        float k = 0.011f * Mathf.Lerp(0.6f, 1.6f, Mathf.InverseLerp(0.3f, 2f, GameSettings.MouseSensitivity));
+                        _handWorld += (rgt * d.x + fwd * d.y) * k;
+                        var flat = Vector3.ClampMagnitude(new Vector3(_handWorld.x, 0f, _handWorld.z), 12f);
+                        _handWorld = new Vector3(flat.x, _handWorld.y, flat.z);
+                    }
+                    else if (md != null && alt)
+                    {
+                        // Alt: steer with the real cursor on the same horizontal plane
+                        var rr = cam.ScreenPointToRay(md.position.ReadValue());
+                        var plane = new Plane(Vector3.up, new Vector3(0f, _handWorld.y, 0f));
+                        if (plane.Raycast(rr, out float hd)) _handWorld = rr.GetPoint(hd);
+                    }
+                    var sp = cam.WorldToScreenPoint(_handWorld);
+                    _pointer = sp.z > 0f ? new Vector2(sp.x, sp.y) : center;
+                }
+                else
+                {
+                    _handStage = TurnStage.None;
+                    if (md != null && alt) _pointer = md.position.ReadValue();
+                    else _pointer = Vector2.Lerp(_pointer, center, 1f - Mathf.Exp(-12f * Time.unscaledDeltaTime));
+                }
+                PointerScreen = _pointer;
+            }
             UpdateGhosts(turns, stage, myTurn);
             UpdateRemoteCursor(game, turns, stage, myTurn);
 
@@ -120,7 +178,7 @@ namespace SecretJenga.Game
             var m0 = Mouse.current;
             if (m0 != null && !UIManager.BlocksGameInput)
             {
-                var r0 = cam.ScreenPointToRay(m0.position.ReadValue());
+                var r0 = cam.ScreenPointToRay(PointerScreen);
                 var table = new Plane(Vector3.up, new Vector3(0f, JengaDims.TableTopY, 0f));
                 if (table.Raycast(r0, out float td))
                 {
@@ -144,7 +202,7 @@ namespace SecretJenga.Game
             var mouse = Mouse.current;
             if (mouse == null || UIManager.BlocksGameInput) { SetHover(null); return; }
 
-            Vector2 mp = mouse.position.ReadValue();
+            Vector2 mp = PointerScreen;
             Ray ray = cam.ScreenPointToRay(mp);
             bool overUI = EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
             _sendTimer -= Time.deltaTime;
@@ -193,10 +251,10 @@ namespace SecretJenga.Game
                         : L.T("Pull slowly along the block's length. Release the mouse to let go.", "Bloğu boyuna doğru yavaşça çek. Bırakmak için fareyi bırak.");
                     if (mouse.leftButton.isPressed)
                     {
-                        if (_sendTimer <= 0f && _dragPlane.Raycast(ray, out float d))
+                        if (_sendTimer <= 0f)
                         {
                             _sendTimer = 1f / sendRate;
-                            turns.DragInputServerRpc(ray.GetPoint(d));
+                            turns.DragInputServerRpc(_handWorld);
                         }
                     }
                     else if (!_releaseSent)
@@ -209,11 +267,8 @@ namespace SecretJenga.Game
                 {
                     SetHover(null);
                     Hint = L.T("The block is out. Move it over the tower and click a glowing slot on top to place it.", "Blok çıktı. Kulenin üstüne götür ve parlayan boş yere tıklayarak koy.");
-                    var center = turns.PlaceCenter.Value;
-                    var carryPlane = new Plane(Vector3.up, new Vector3(0, center.y + JengaDims.BlockHeight * 2.5f, 0));
-                    if (carryPlane.Raycast(ray, out float d))
                     {
-                        var p = ray.GetPoint(d);
+                        var p = _handWorld;
                         if (_sendTimer <= 0f)
                         {
                             _sendTimer = 1f / sendRate;

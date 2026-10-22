@@ -6,7 +6,7 @@ using UnityEngine;
 namespace SecretJenga.Game
 {
     /// <summary>Little left-hand gestures anyone can make at the table (number keys 1-6).</summary>
-    public enum Gesture : byte { None = 0, Ok = 1, ThumbsUp = 2, MiddleFinger = 3, Beer = 4, Wave = 5, Horns = 6 }
+    public enum Gesture : byte { None = 0, Ok = 1, Smoke = 2, MiddleFinger = 3, Beer = 4, Wave = 5, Horns = 6 }
 
     /// <summary>One player's hand as seen by everyone (where its contact point is and what shape it makes).</summary>
     public struct HandNetState : INetworkSerializable
@@ -132,7 +132,7 @@ namespace SecretJenga.Game
                 _botNextGesture[p.ClientId] = Time.time + UnityEngine.Random.Range(14f, 38f);
                 if (game.Turns != null && game.Turns.ActiveClientId.Value == p.ClientId && game.Phase.Value == GamePhase.Playing) continue; // busy
                 float r = UnityEngine.Random.value;
-                var g = r < 0.5f ? Gesture.Beer : r < 0.65f ? Gesture.Ok : r < 0.8f ? Gesture.ThumbsUp : r < 0.9f ? Gesture.Wave : r < 0.96f ? Gesture.Horns : Gesture.MiddleFinger;
+                var g = r < 0.38f ? Gesture.Beer : r < 0.66f ? Gesture.Smoke : r < 0.78f ? Gesture.Ok : r < 0.88f ? Gesture.Wave : r < 0.95f ? Gesture.Horns : Gesture.MiddleFinger;
                 ServerBotGesture(p.ClientId, g);
             }
         }
@@ -156,7 +156,7 @@ namespace SecretJenga.Game
         {
             if (float.IsNaN(contact.x) || float.IsNaN(contact.y) || float.IsNaN(contact.z)) return;
             ulong id = rpc.Receive.SenderClientId;
-            _server[id] = new HandNetState { ClientId = id, Contact = ClampToTable(contact), Pose = (byte)Mathf.Min(pose, (int)HandPoseId.Horns) };
+            _server[id] = new HandNetState { ClientId = id, Contact = ClampToTable(contact), Pose = (byte)Mathf.Min(pose, (int)HandPoseId.Cigarette) };
         }
 
         [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]

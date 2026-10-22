@@ -53,7 +53,7 @@ namespace SecretJenga.Game
             get
             {
                 if (_slipperyMat == null)
-                    _slipperyMat = new PhysicsMaterial("SJ_WoodHeld") { staticFriction = 0.16f, dynamicFriction = 0.12f, bounciness = 0f, frictionCombine = PhysicsMaterialCombine.Minimum, bounceCombine = PhysicsMaterialCombine.Minimum };
+                    _slipperyMat = new PhysicsMaterial("SJ_WoodHeld") { staticFriction = 0.11f, dynamicFriction = 0.08f, bounciness = 0f, frictionCombine = PhysicsMaterialCombine.Minimum, bounceCombine = PhysicsMaterialCombine.Minimum };
                 return _slipperyMat;
             }
         }
@@ -228,6 +228,8 @@ namespace SecretJenga.Game
             Hold.Value = HoldMode.None;
             Col.sharedMaterial = NormalMaterial;
             Col.isTrigger = false;
+            // a block that was being carried when the turn / round was cut short must not stay frozen in the air
+            if (Rb.isKinematic) { Rb.isKinematic = false; Rb.linearVelocity = Vector3.zero; Rb.angularVelocity = Vector3.zero; Rb.WakeUp(); }
             Rb.constraints = RigidbodyConstraints.None;
             Rb.collisionDetectionMode = CollisionDetectionMode.Discrete;
         }

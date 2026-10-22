@@ -71,6 +71,9 @@ namespace SecretJenga
         public AudioClip[] chairCreaks;
         public AudioClip[] distantMetal;
 
+        [Header("Audio - saloon")]
+        public AudioClip saloonPiano, saloonMurmur, lighter, exhale, gulp;
+
         [Header("Audio - UI / round")]
         public AudioClip uiHover, uiClick, missionComplete, turnStart, timerTick, win, lose, countdown, error, cardPlayed;
 

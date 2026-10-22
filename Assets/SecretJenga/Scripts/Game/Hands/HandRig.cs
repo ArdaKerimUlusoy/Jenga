@@ -7,7 +7,7 @@ namespace SecretJenga.Game
     {
         Rest = 0, Flat = 1, Point = 2, Pinch = 3, Hold = 4, Recoil = 5, Drum = 6, Knock = 7,
         // gestures (see HandGestures)
-        Ok = 8, ThumbsUp = 9, MiddleFinger = 10, MugGrip = 11, Open = 12, Horns = 13,
+        Ok = 8, ThumbsUp = 9, MiddleFinger = 10, MugGrip = 11, Open = 12, Horns = 13, Cigarette = 14,
     }
 
     /// <summary>
@@ -33,7 +33,10 @@ namespace SecretJenga.Game
         {
             switch (id)
             {
-                case HandPoseId.Flat: return new Pose(0.10f, 0.10f, 0.12f, 0.15f, 0.12f, 0.05f, 0.35f);
+                // relaxed hand lying on the table: fingers slightly bent, close together
+                case HandPoseId.Flat: return new Pose(0.2f, 0.22f, 0.27f, 0.32f, 0.22f, 0.18f, 0.16f);
+                // cigarette held between index and middle finger
+                case HandPoseId.Cigarette: return new Pose(0.22f, 0.26f, 0.82f, 0.86f, 0.45f, 0.55f, 0.02f);
                 case HandPoseId.Point: return new Pose(0.02f, 0.78f, 0.86f, 0.9f, 0.55f, 0.55f, 0.1f);
                 case HandPoseId.Pinch: return new Pose(0.40f, 0.58f, 0.66f, 0.74f, 0.42f, 1.0f, 0.05f);
                 case HandPoseId.Hold: return new Pose(0.50f, 0.62f, 0.66f, 0.70f, 0.40f, 0.95f, 0.05f);
@@ -60,6 +63,8 @@ namespace SecretJenga.Game
         public Transform Wrist { get; private set; }
         /// <summary>World position of the palm centre (where a held object sits).</summary>
         public Vector3 PalmPosition => _palmCenter != null ? _palmCenter.position : transform.position;
+        /// <summary>Between the middle joints of index and middle finger (where a cigarette is held).</summary>
+        public Vector3 CigarettePoint => _finger[0][0] != null ? (_finger[0][1].position + _finger[1][1].position) * 0.5f : transform.position;
         public Vector3 Shoulder { get; set; }
         /// <summary>0..1 visible trembling (fear, a wobbling tower).</summary>
         public float Tremble { get; set; }
@@ -73,12 +78,14 @@ namespace SecretJenga.Game
                 if (_firstPerson == value) return;
                 _firstPerson = value;
                 foreach (var r in _upper.GetComponentsInChildren<Renderer>(true)) r.enabled = !value;
-                foreach (var r in _sleeve.GetComponentsInChildren<Renderer>(true)) r.enabled = !value;
+
             }
         }
         bool _firstPerson;
 
-        const float UpperArm = 6.4f, Forearm = 5.8f;
+        const float UpperArm = 7.4f, Forearm = 6.6f;
+        /// <summary>Longest comfortable reach from the shoulder to the contact point.</summary>
+        public const float Reach = (UpperArm + Forearm) * 0.96f;
 
         Transform[][] _finger = new Transform[4][];
         Transform[] _thumb = new Transform[3];
@@ -91,7 +98,39 @@ namespace SecretJenga.Game
         bool _hasContact;
         float _drumT, _knockT;
 
-        static Mesh _segMesh, _palmMesh, _armMesh, _sleeveMesh;
+        static Mesh _segMesh, _palmMeshR, _palmMeshL, _armMesh, _sleeveMesh, _cuffMesh, _nailMesh;
+        static readonly System.Collections.Generic.Dictionary<Material, Material> _nailMats = new System.Collections.Generic.Dictionary<Material, Material>();
+
+        static Matrix4x4 M(Vector3 p, Vector3 s) => Matrix4x4.TRS(p, Quaternion.identity, s);
+
+        /// <summary>Palm with a soft heel, the thumb's ball and a row of knuckles (built per side).</summary>
+        static Mesh PalmMesh(float side)
+        {
+            var box = ProceduralMeshes.BeveledBox(new Vector3(1.62f, 0.5f, 1.85f), 0.24f, false, Vector2.one, "palmBox");
+            var ball = ProceduralMeshes.UVSphere(1f, 10, 14, "ball");
+            return ProceduralMeshes.Combine(side > 0 ? "TLB_PalmR" : "TLB_PalmL",
+                (box, M(new Vector3(0f, 0f, 1.0f), Vector3.one)),
+                (ball, M(new Vector3(-0.5f * side, -0.12f, 0.55f), new Vector3(0.42f, 0.3f, 0.62f))),   // thumb ball
+                (ball, M(new Vector3(0.18f * side, -0.1f, 0.3f), new Vector3(0.62f, 0.27f, 0.42f))),   // heel
+                (ball, M(new Vector3(-0.62f * side, 0.1f, 1.86f), new Vector3(0.21f, 0.2f, 0.2f))),    // knuckles
+                (ball, M(new Vector3(-0.2f * side, 0.12f, 1.92f), new Vector3(0.22f, 0.21f, 0.2f))),
+                (ball, M(new Vector3(0.22f * side, 0.11f, 1.9f), new Vector3(0.21f, 0.2f, 0.2f))),
+                (ball, M(new Vector3(0.6f * side, 0.08f, 1.76f), new Vector3(0.18f, 0.18f, 0.18f))));
+        }
+
+        static Material NailMaterial(Material skin)
+        {
+            if (skin == null) return null;
+            if (_nailMats.TryGetValue(skin, out var m) && m != null) return m;
+            m = new Material(skin) { name = skin.name + "_Nail" };
+            var c = skin.HasProperty("_BaseColor") ? skin.GetColor("_BaseColor") : skin.color;
+            var nail = Color.Lerp(c, new Color(0.96f, 0.86f, 0.82f), 0.55f);
+            if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", nail);
+            m.color = nail;
+            if (m.HasProperty("_Smoothness")) m.SetFloat("_Smoothness", 0.7f);
+            _nailMats[skin] = m;
+            return m;
+        }
 
         // ------------------------------------------------------------------ Construction
         public static HandRig Create(Transform parent, string name, float side, Material skin, Material cloth)
@@ -123,11 +162,19 @@ namespace SecretJenga.Game
                 new Vector2(0f, -0.35f), new Vector2(0.6f, -0.25f), new Vector2(0.95f, 0.0f), new Vector2(1f, 0.5f),
                 new Vector2(0.95f, 1.0f), new Vector2(0.6f, 1.22f), new Vector2(0f, 1.3f)
             }, 12, false, false, "TLB_FingerSeg"));
-            _palmMesh = ProceduralMeshes.BeveledBox(new Vector3(1.75f, 0.62f, 2.0f), 0.26f, false, Vector2.one, "TLB_Palm");
+            _palmMeshR = PalmMesh(1f);
+            _palmMeshL = PalmMesh(-1f);
+            // forearm: slim wrist, fuller towards the elbow
             _armMesh = AlongZ(ProceduralMeshes.Lathe(new[]
             {
-                new Vector2(0f, -0.1f), new Vector2(0.55f, 0f), new Vector2(0.62f, 0.3f), new Vector2(0.78f, 0.75f), new Vector2(0.8f, 1.0f), new Vector2(0f, 1.05f)
-            }, 14, false, false, "TLB_Forearm"));
+                new Vector2(0f, -0.12f), new Vector2(0.36f, -0.08f), new Vector2(0.44f, 0.04f), new Vector2(0.5f, 0.2f), new Vector2(0.62f, 0.55f),
+                new Vector2(0.68f, 0.85f), new Vector2(0.62f, 1.0f), new Vector2(0f, 1.05f)
+            }, 16, false, false, "TLB_Forearm"));
+            _cuffMesh = AlongZ(ProceduralMeshes.Lathe(new[]
+            {
+                new Vector2(0.95f, 0f), new Vector2(1.12f, 0.05f), new Vector2(1.18f, 0.5f), new Vector2(1.12f, 0.95f), new Vector2(0.95f, 1f)
+            }, 16, false, false, "TLB_Cuff"));
+            _nailMesh = ProceduralMeshes.UVSphere(1f, 6, 10, "TLB_Nail");
             _sleeveMesh = AlongZ(ProceduralMeshes.Lathe(new[]
             {
                 new Vector2(0f, 0f), new Vector2(1.0f, 0.02f), new Vector2(1.08f, 0.15f), new Vector2(1.12f, 0.85f), new Vector2(1.18f, 1f), new Vector2(0f, 1.02f)
@@ -159,7 +206,8 @@ namespace SecretJenga.Game
             EnsureMeshes();
             Wrist = Node(transform, "Wrist", Vector3.zero);
             // palm: wrist at origin, fingers point +Z, back of the hand +Y, thumb on -X for the right hand
-            Skin(Wrist, _palmMesh, skin, new Vector3(1f, 1f, 1f), new Vector3(0f, 0f, 1.0f));
+            Skin(Wrist, side > 0 ? _palmMeshR : _palmMeshL, skin, Vector3.one);
+            var nailMat = NailMaterial(skin);
             _palmCenter = Node(Wrist, "PalmContact", new Vector3(0f, -0.35f, 1.1f));
             _knuckle = Node(Wrist, "KnuckleContact", new Vector3(0f, 0.1f, 2.15f));
 
@@ -176,6 +224,7 @@ namespace SecretJenga.Game
                     var joint = Node(parent, $"F{f}_{j}", pos);
                     float r = radius[f] * (1f - 0.12f * j);
                     Skin(joint, _segMesh, skin, new Vector3(r, r * 0.92f, lens[f][j]));
+                    if (j == 2 && nailMat != null) Skin(joint, _nailMesh, nailMat, new Vector3(r * 0.78f, r * 0.22f, lens[f][j] * 0.42f), new Vector3(0f, r * 0.78f, lens[f][j] * 0.72f));
                     _finger[f][j] = joint;
                     parent = joint;
                     pos = new Vector3(0f, 0f, lens[f][j]);
@@ -191,6 +240,7 @@ namespace SecretJenga.Game
                 var joint = Node(tp, "T_" + j, tpos);
                 float r = 0.23f * (1f - 0.1f * j);
                 Skin(joint, _segMesh, skin, new Vector3(r, r * 0.9f, tl[j]));
+                if (j == 2 && nailMat != null) Skin(joint, _nailMesh, nailMat, new Vector3(r * 0.8f, r * 0.22f, tl[j] * 0.45f), new Vector3(0f, r * 0.75f, tl[j] * 0.7f));
                 _thumb[j] = joint;
                 tp = joint;
                 tpos = new Vector3(0f, 0f, tl[j]);
@@ -200,8 +250,10 @@ namespace SecretJenga.Game
             // arm: forearm hangs back from the wrist, sleeve over its rear half, upper arm in cloth
             _forearm = Node(transform, "Forearm", Vector3.zero);
             Skin(_forearm, _armMesh, skin, new Vector3(1f, 0.85f, Forearm));
-            _sleeve = Node(_forearm, "Sleeve", new Vector3(0f, 0f, Forearm * 0.45f));
-            Skin(_sleeve, _sleeveMesh, cloth, new Vector3(1f, 0.92f, Forearm * 0.6f));
+            // a rolled-up shirt sleeve over the back half of the forearm, with a thick turned-up cuff
+            _sleeve = Node(_forearm, "Sleeve", new Vector3(0f, 0f, Forearm * 0.52f));
+            Skin(_sleeve, _sleeveMesh, cloth, new Vector3(0.82f, 0.74f, Forearm * 0.53f));
+            Skin(_sleeve, _cuffMesh, cloth, new Vector3(0.86f, 0.78f, 0.9f), new Vector3(0f, 0f, -0.15f));
             _upper = Node(transform, "UpperArm", Vector3.zero);
             Skin(_upper, _sleeveMesh, cloth, new Vector3(1.15f, 1.05f, UpperArm));
 

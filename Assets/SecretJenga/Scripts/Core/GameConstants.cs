@@ -27,11 +27,11 @@ namespace SecretJenga
     public static class SeatLayout
     {
         public const int SeatCount = 5;
-        public const float TableRadius = 8.2f;
+        public const float TableRadius = 12.5f;    // 1.25 m round table - room for five and a tall tower
         public const float FloorY = -14f;          // table is ~70 cm high
-        public const float ChairRadius = 11.6f;    // chair center distance from the tower
-        public const float EyeRadius = 9.6f;      // seated eye distance from the tower
-        public const float EyeHeight = 8.6f;       // seated eye height above the table top (high enough to see the top of a tall tower)
+        public const float ChairRadius = 16.2f;    // chair center distance from the tower
+        public const float EyeRadius = 13.4f;      // seated eye distance from the tower
+        public const float EyeHeight = 9.0f;       // seated eye height above the table top (high enough to see the top of a tall tower)
         public const float LampHeight = 22f;       // wagon-wheel chandelier, high enough to never hide the tower
 
         /// <summary>Order in which seats are handed out so that 2-4 players are spread around the table.</summary>

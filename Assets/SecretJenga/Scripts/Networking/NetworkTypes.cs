@@ -99,6 +99,8 @@ namespace SecretJenga.Networking
         public bool CausedCollapse;
         /// <summary>Points this round: for surviving / dropping the tower, and for the secret task.</summary>
         public int SurvivalPoints, TaskPoints;
+        /// <summary>Penalties this round (running out of time without taking a block).</summary>
+        public int PenaltyPoints;
         /// <summary>Match total after this round.</summary>
         public int TotalScore;
 
@@ -106,6 +108,7 @@ namespace SecretJenga.Networking
         {
             serializer.SerializeValue(ref SurvivalPoints);
             serializer.SerializeValue(ref TaskPoints);
+            serializer.SerializeValue(ref PenaltyPoints);
             serializer.SerializeValue(ref TotalScore);
             serializer.SerializeValue(ref ClientId);
             serializer.SerializeValue(ref Name);

@@ -38,6 +38,35 @@ three experimental cards, host-authoritative physics, English / Türkçe.
 * **El hareketleri** (sol el, herkes görür, botlar da yapar): **1** tamam işareti · **2** başparmak · **3** orta parmak
   · **4** önündeki bira bardağından bir yudum · **5** el sallama · **6** rock işareti.
 
+### 0.2.3
+
+* **Arayüz:** lobi kağıtlarındaki taşan yazı/düğmeler düzeltildi; pencere 16:9'dan darsa arayüz genişliğe göre
+  ölçeklenir, böylece kenardan kayan parça kalmaz.
+* **Eller:** yuvarlak avuç, eklem çizgisi, tırnaklar, ince bilek, kıvrılmış gömlek kolu ve manşet; masada gevşek
+  duruş; daha doğal ten rengi (sıcak ışıkta turuncu plastik gibi durmaz).
+* **Atmosfer:** pencerelerden giren tozlu güneş huzmeleri, havada uçuşan toz, barın üstünde sarkan lambalar,
+  ahşap direkler, askıda kovboy şapkaları, piyanonun üstünde tüfek, tükürük hokkaları, yan masalarda yeşil çuha,
+  fişler ve iskambil kağıtları. **Ses:** honky-tonk piyano ve salon uğultusu (kule tehlikeye girince kısılır),
+  bira yudumu ve nefes sesleri (`Tools~/generate_saloon_audio.py`).
+* **2 = sigara:** küllükteki sigarayı alır, derin bir nefes çeker (kor parlar), eli indirip dumanı üfler, geri
+  koyar. Küllükteki sigaradan sürekli ince bir duman çıkar.
+* **Generate Project'i yeniden çalıştırın** (yeni sahne objeleri ve sesler).
+
+### 0.2.2 düzeltmeleri
+
+* **Fare ile bakış:** sağ tık gerekmiyor, imleç kilitli ve fare doğrudan bakışı çevirir; el ekranın ortasındaki
+  noktaya uzanır. Blok çekerken/taşırken bakış durur, fare eli hareket ettirir. **Sol Alt** basılıyken imleç serbest.
+* **Masa büyüdü:** 1,25 m çaplı masa, sandalyeler ve göz noktası geriye alındı, kollar uzadı; sıra sende iken öne
+  eğilirsin, diğer oyuncular uzanırken gövdeleriyle öne eğilir. **Generate Project'i yeniden çalıştırın** (masa,
+  sandalyeler ve avize sahnede yeniden oluşur).
+* **Eller:** boştaki el kulenin arka tarafına geçemez ve kol boyundan uzağa gidemez.
+* **El hareketleri görünür:** diğer oyuncuların hareketleri masanın kenarında, herkesin kamerasının baktığı yerde
+  yapılır; ayrıca kafalarının üstünde kısa bir yazı çıkar (Şerefe!, Selam!...).
+* **Takılan bloklar:** taşınırken el turu/eli biterse havada kalan blok artık düşer; tutulan blok daha az sürtünür,
+  çekme kuvveti arttı, blok %80 dışarıdayken kaldırılabilir.
+* **Kural dengesi:** yeni sıra başladıktan sonraki ilk 3 saniyede, yeni oyuncu hiçbir bloğa dokunmadan kule yıkılırsa
+  suç **önceki oyuncunun** sayılır. Blok almadan süresini dolduran **-1 puan** alır (beklemek strateji olmasın).
+
 ## Hızlı başlangıç (Türkçe)
 
 1. Projeyi Unity **6000.3.9f1** ile açın. Script'ler derlendikten sonra menüden

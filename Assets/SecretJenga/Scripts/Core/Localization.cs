@@ -97,6 +97,7 @@ namespace SecretJenga
             { "already_started", ("The round has already started.", "El çoktan başladı.") },
             // turns
             { "ran_out", ("{0} ran out of time.", "{0} süresini doldurdu.") },
+            { "ran_out_penalty", ("{0} ran out of time without taking a block ({1} point).", "{0} blok almadan süresini doldurdu ({1} puan).") },
             { "not_count", ("{0}'s turn does not count.", "{0} bu turu boşa geçirdi.") },
             { "pressure_on_you", ("Pressure is on you: you must take the first block you touch.", "Baskı sende: ilk dokunduğun bloğu almak zorundasın.") },
             { "pressure_touched", ("Pressure: you must take the block you touched first.", "Baskı: ilk dokunduğun bloğu almalısın.") },

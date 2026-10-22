@@ -26,6 +26,7 @@ namespace SecretJenga.UI
         enum View { None, Splash, Main, Host, Join, Browser, Lobby, Hud, Results, Credits }
 
         RectTransform _root;
+        CanvasScaler _scaler;
         readonly Dictionary<View, CanvasGroup> _screens = new Dictionary<View, CanvasGroup>();
         View _current = View.None;
         GamePhase _lastPhase = (GamePhase)255;
@@ -165,12 +166,26 @@ namespace SecretJenga.UI
             scaler.referenceResolution = new Vector2(1920, 1080);
             scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
             scaler.matchWidthOrHeight = 0.5f;
+            _scaler = scaler;
+            FitScaler();
             _root = (RectTransform)go.transform;
 
             // cinematic vignette over the 3D scene
             var vig = UIFactory.Image(_root, "Vignette", A.vignette, new Color(0, 0, 0, 0.85f), false);
             UIFactory.Stretch(vig.rectTransform);
             if (A.vignette == null) vig.enabled = false;
+        }
+
+        /// <summary>
+        /// Layouts are designed for 1920x1080. On narrower windows (16:10, 4:3, a small editor Game view) match the width
+        /// so nothing slides off the sides; on wider screens match the height so nothing slides off the top/bottom.
+        /// </summary>
+        void FitScaler()
+        {
+            if (_scaler == null || Screen.height <= 0) return;
+            float aspect = Screen.width / (float)Screen.height;
+            float m = aspect < 16f / 9f - 0.01f ? 0f : 1f;
+            if (!Mathf.Approximately(_scaler.matchWidthOrHeight, m)) _scaler.matchWidthOrHeight = m;
         }
 
         CanvasGroup NewScreen(View id, string name)
@@ -264,6 +279,7 @@ namespace SecretJenga.UI
         void Update()
         {
             if (_rebuildPending) RebuildForLanguage();
+            FitScaler();
             if (_loadingOpen && _spinner != null)
             {
                 // the ink ring breathes instead of spinning like a web page

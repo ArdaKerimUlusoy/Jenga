@@ -17,8 +17,9 @@ namespace SecretJenga.Game
     /// and the free slots stay visible. With rising tension the hands tremble and the fingers drum. F knocks.
     /// All of this is shared through HandSync (bots publish their hands from the host). Purely visual.
     ///
-    /// Gestures (left hand, number keys): 1 OK sign, 2 thumbs up, 3 middle finger, 4 a sip of beer from the mug in
-    /// front of you, 5 wave, 6 "rock on". Everyone at the table sees them; bots make them too.
+    /// Gestures (left hand, number keys): 1 OK sign, 2 a drag on the cigarette from the ashtray (with smoke),
+    /// 3 middle finger, 4 a sip of beer from the mug in front of you, 5 wave, 6 "rock on".
+    /// Everyone at the table sees them; bots make them too.
     /// </summary>
     public class PlayerAvatars : MonoBehaviour
     {
@@ -32,7 +33,8 @@ namespace SecretJenga.Game
             public bool Local;
             public float KnockUntil;
             // rigged character
-            public Transform Model, BHead, BUpperL, BUpperR, BLowerL, BLowerR;
+            public Transform Model, BHead, BUpperL, BUpperR, BLowerL, BLowerR, BSpine;
+            public float Lean, LeanTarget;
             public Animator Anim;
             public float ModelScale = 20f;
             public Vector3 PelvisOffset;     // pelvis position relative to the model root (scaled, model space)
@@ -41,18 +43,57 @@ namespace SecretJenga.Game
             // gestures
             public Gesture G;
             public float GStart;
-            public Transform Mug;
+            public Transform Mug, Ashtray, Cig;
+            public Renderer CigEmber;
+            public ParticleSystem Smoke;
+            public int GFlags;          // one-shot events inside the current gesture (sounds, smoke puff)
+            public float WispTimer;
         }
+
+        static Mesh _cigMesh, _emberMesh, _ashtrayMesh;
+        static Material _cigMat, _emberMat, _ashtrayMat, _smokeMat;
+        MaterialPropertyBlock _mpb;
 
         static Mesh _mugGlass, _mugBeer, _mugFoam, _mugHandle;
         static Material _mugGlassMat, _mugBeerMat, _mugFoamMat;
 
-        public static float GestureLength(Gesture g) => g == Gesture.Beer ? 3.6f : g == Gesture.Wave ? 2.3f : 2.0f;
+        /// <summary>Short line shown over the player's head while they gesture (so nobody misses it).</summary>
+        public static string GesturePhrase(Gesture g)
+        {
+            switch (g)
+            {
+                case Gesture.Ok: return L.T("OK!", "Tamam!");
+                case Gesture.Smoke: return L.T("Fhhh...", "Fuuuh...");
+                case Gesture.MiddleFinger: return "#@$%!";
+                case Gesture.Beer: return L.T("Cheers!", "Şerefe!");
+                case Gesture.Wave: return L.T("Howdy!", "Selam!");
+                case Gesture.Horns: return L.T("Rock on!", "Rock!");
+                default: return "";
+            }
+        }
+
+        /// <summary>
+        /// Keeps a free hand where a seated person can actually put it: never past the far side of the tower and
+        /// never further from the shoulder than the arm reaches.
+        /// </summary>
+        static Vector3 LimitHand(int seat, Vector3 shoulder, Vector3 p)
+        {
+            var outward = SeatLayout.Outward(seat);
+            const float farLimit = -1.1f;
+            float d = Vector3.Dot(new Vector3(p.x, 0f, p.z), outward);
+            if (d < farLimit) p += outward * (farLimit - d);
+            var toP = p - shoulder;
+            if (toP.magnitude > HandRig.Reach) p = shoulder + toP.normalized * HandRig.Reach;
+            return p;
+        }
+
+        public static float GestureLength(Gesture g) => g == Gesture.Beer ? 3.6f : g == Gesture.Smoke ? 4.6f : g == Gesture.Wave ? 2.3f : 2.0f;
 
         static readonly string[] SitStates = { "Sitting_Idle_Loop", "Sitting_Idle02_Loop", "Sitting_Idle03_Loop", "Sitting_Talking_Loop", "Sitting_Nodding_Loop" };
         static readonly Color[] Shirts = { new Color(0.78f, 0.72f, 0.6f), new Color(0.55f, 0.18f, 0.14f), new Color(0.32f, 0.38f, 0.5f), new Color(0.6f, 0.55f, 0.42f), new Color(0.3f, 0.36f, 0.26f) };
         static readonly Color[] Hats = { new Color(0.33f, 0.22f, 0.13f), new Color(0.12f, 0.1f, 0.09f), new Color(0.55f, 0.42f, 0.28f), new Color(0.24f, 0.17f, 0.12f) };
-        static readonly Color[] Skins = { new Color(0.86f, 0.66f, 0.52f), new Color(0.72f, 0.52f, 0.38f), new Color(0.55f, 0.38f, 0.27f), new Color(0.92f, 0.74f, 0.62f) };
+        // slightly desaturated: the warm oil-lamp light adds the rest (fully saturated tones read as orange plastic)
+        static readonly Color[] Skins = { new Color(0.84f, 0.69f, 0.62f), new Color(0.74f, 0.57f, 0.48f), new Color(0.56f, 0.42f, 0.35f), new Color(0.9f, 0.77f, 0.7f) };
 
         /// <summary>Head-bone height of the seated character above the floor, in game units (1.18 m).</summary>
         const float SeatedHeadHeight = 23.5f;
@@ -93,6 +134,7 @@ namespace SecretJenga.Game
             if (!_avatars.TryGetValue(clientId, out var av)) return;
             av.G = g;
             av.GStart = Time.time;
+            av.GFlags = 0;
         }
 
         /// <summary>Number keys 1-6 make a gesture (not while typing or in a menu).</summary>
@@ -104,7 +146,7 @@ namespace SecretJenga.Game
             if (es != null && es.currentSelectedGameObject != null && es.currentSelectedGameObject.GetComponent<UnityEngine.UI.InputField>() != null) return;
             var g = Gesture.None;
             if (kb.digit1Key.wasPressedThisFrame || kb.numpad1Key.wasPressedThisFrame) g = Gesture.Ok;
-            else if (kb.digit2Key.wasPressedThisFrame || kb.numpad2Key.wasPressedThisFrame) g = Gesture.ThumbsUp;
+            else if (kb.digit2Key.wasPressedThisFrame || kb.numpad2Key.wasPressedThisFrame) g = Gesture.Smoke;
             else if (kb.digit3Key.wasPressedThisFrame || kb.numpad3Key.wasPressedThisFrame) g = Gesture.MiddleFinger;
             else if (kb.digit4Key.wasPressedThisFrame || kb.numpad4Key.wasPressedThisFrame) g = Gesture.Beer;
             else if (kb.digit5Key.wasPressedThisFrame || kb.numpad5Key.wasPressedThisFrame) g = Gesture.Wave;
@@ -147,7 +189,7 @@ namespace SecretJenga.Game
                 if (av.Seat != p.SeatIndex) { av.Seat = p.SeatIndex; PlaceBody(av); }
                 if (av.LabelText != null)
                 {
-                    av.LabelText.text = p.IsBot ? p.Name + " (bot)" : p.Name.ToString();
+                    av.LabelText.text = (p.IsBot ? p.Name + " (bot)" : p.Name.ToString()) + (av.G != Gesture.None ? "\n" + GesturePhrase(av.G) : "");
                     av.LabelText.color = Color.Lerp(Palette.Paper, p.Color, 0.45f);
                 }
                 Animate(game, p.ClientId, av, tension);
@@ -177,7 +219,15 @@ namespace SecretJenga.Game
             av.Root.transform.SetParent(transform, false);
             var r = av.Root.transform;
             Material handSkin = _skin, handCloth = _cloth;
-            if (!local)
+            if (local)
+            {
+                // your own hands match the saloon patrons: a natural skin tone and a rolled-up shirt sleeve
+                int lh = StableHash(playerName);
+                var sc = Skins[(lh / 13) % Skins.Length];
+                handSkin = RuntimeArt.MakeLit(new Color(sc.r * 0.95f, sc.g * 0.9f, sc.b * 0.92f), 0.32f);
+                handCloth = RuntimeArt.MakeLit(Shirts[lh % Shirts.Length], 0.12f);
+            }
+            else
             {
                 if (!TryBuildCowboy(av, playerName, colorIndex, out handSkin, out handCloth))
                 {
@@ -202,12 +252,109 @@ namespace SecretJenga.Game
             av.Right = HandRig.Create(r, "RightHand", 1f, handSkin, handCloth);
             av.Left = HandRig.Create(r, "LeftHand", -1f, handSkin, handCloth);
             av.Mug = BuildMug(r);
+            BuildSmokingKit(av, r);
             if (local)
             {
                 av.Right.FirstPerson = true;
                 av.Left.FirstPerson = true;
             }
             return av;
+        }
+
+        /// <summary>Ashtray with a lit cigarette resting on it, plus a smoke emitter (used by the smoke gesture).</summary>
+        void BuildSmokingKit(Avatar av, Transform parent)
+        {
+            if (_cigMesh == null)
+            {
+                _cigMesh = ProceduralMeshes.Cylinder(0.085f, 1.7f, 10, "TLB_Cigarette");
+                _emberMesh = ProceduralMeshes.Cylinder(0.092f, 0.14f, 10, "TLB_Ember");
+                _ashtrayMesh = ProceduralMeshes.Lathe(new[]
+                {
+                    new Vector2(0f, 0f), new Vector2(1.15f, 0f), new Vector2(1.25f, 0.12f), new Vector2(1.2f, 0.42f), new Vector2(1.0f, 0.45f),
+                    new Vector2(0.92f, 0.2f), new Vector2(0f, 0.2f)
+                }, 24, false, false, "TLB_Ashtray");
+                _cigMat = RuntimeArt.MakeLit(new Color(0.93f, 0.9f, 0.84f), 0.2f);
+                _emberMat = RuntimeArt.MakeLit(new Color(0.25f, 0.08f, 0.04f), 0.3f);
+                RuntimeArt.EnableEmission(_emberMat);
+                _emberMat.SetColor("_EmissionColor", new Color(1f, 0.35f, 0.08f) * 1.5f);
+                _ashtrayMat = RuntimeArt.MakeLit(new Color(0.42f, 0.3f, 0.16f), 0.7f);
+                _ashtrayMat.SetFloat("_Metallic", 0.8f);
+                var dust = SecretJengaAssets.Instance.dustMaterial;
+                _smokeMat = dust != null ? new Material(dust) : RuntimeArt.MakeGhost(new Color(0.8f, 0.8f, 0.8f, 0.4f));
+                if (_smokeMat.HasProperty("_BaseColor")) _smokeMat.SetColor("_BaseColor", new Color(0.82f, 0.8f, 0.78f, 0.5f));
+            }
+            if (_mpb == null) _mpb = new MaterialPropertyBlock();
+
+            var tray = new GameObject("Ashtray").transform;
+            tray.SetParent(parent, false);
+            tray.gameObject.AddComponent<MeshFilter>().sharedMesh = _ashtrayMesh;
+            tray.gameObject.AddComponent<MeshRenderer>().sharedMaterial = _ashtrayMat;
+            av.Ashtray = tray;
+
+            var cig = new GameObject("Cigarette").transform;
+            cig.SetParent(parent, false);
+            var body = new GameObject("Paper");
+            body.transform.SetParent(cig, false);
+            body.AddComponent<MeshFilter>().sharedMesh = _cigMesh;
+            body.AddComponent<MeshRenderer>().sharedMaterial = _cigMat;
+            var ember = new GameObject("Ember");
+            ember.transform.SetParent(cig, false);
+            ember.transform.localPosition = new Vector3(0f, 0.9f, 0f);   // the lit end is +Y, the filter -Y
+            ember.AddComponent<MeshFilter>().sharedMesh = _emberMesh;
+            av.CigEmber = ember.AddComponent<MeshRenderer>();
+            av.CigEmber.sharedMaterial = _emberMat;
+            av.Cig = cig;
+
+            var smokeGo = new GameObject("Smoke");
+            smokeGo.transform.SetParent(parent, false);
+            var ps = smokeGo.AddComponent<ParticleSystem>();
+            ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+            var main = ps.main;
+            main.playOnAwake = false;
+            main.loop = true;
+            main.simulationSpace = ParticleSystemSimulationSpace.World;
+            main.startLifetime = new ParticleSystem.MinMaxCurve(2.2f, 3.4f);
+            main.startSpeed = 0f;
+            main.startSize = new ParticleSystem.MinMaxCurve(0.4f, 0.8f);
+            main.startColor = new Color(0.85f, 0.84f, 0.82f, 0.32f);
+            main.gravityModifier = -0.012f;
+            main.maxParticles = 160;
+            var em = ps.emission; em.enabled = false;
+            var shape = ps.shape; shape.enabled = false;
+            var sol = ps.sizeOverLifetime;
+            sol.enabled = true;
+            sol.size = new ParticleSystem.MinMaxCurve(1f, AnimationCurve.Linear(0f, 0.6f, 1f, 3.2f));
+            var col = ps.colorOverLifetime;
+            col.enabled = true;
+            var grad = new Gradient();
+            grad.SetKeys(new[] { new GradientColorKey(Color.white, 0f), new GradientColorKey(Color.white, 1f) },
+                         new[] { new GradientAlphaKey(0f, 0f), new GradientAlphaKey(1f, 0.12f), new GradientAlphaKey(0.5f, 0.5f), new GradientAlphaKey(0f, 1f) });
+            col.color = grad;
+            var noise = ps.noise;
+            noise.enabled = true;
+            noise.strength = 0.25f;
+            noise.frequency = 0.6f;
+            var rot = ps.rotationOverLifetime;
+            rot.enabled = true;
+            rot.z = new ParticleSystem.MinMaxCurve(-0.6f, 0.6f);
+            var pr = smokeGo.GetComponent<ParticleSystemRenderer>();
+            pr.sharedMaterial = _smokeMat;
+            pr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            ps.Play();
+            av.Smoke = ps;
+        }
+
+        static void Puff(ParticleSystem ps, Vector3 at, Vector3 dir, int count, float speed, float size)
+        {
+            if (ps == null) return;
+            var ep = new ParticleSystem.EmitParams();
+            for (int i = 0; i < count; i++)
+            {
+                ep.position = at + Random.insideUnitSphere * 0.08f;
+                ep.velocity = (dir + Random.insideUnitSphere * 0.35f) * speed * Random.Range(0.6f, 1.2f) + Vector3.up * 0.15f;
+                ep.startSize = size * Random.Range(0.7f, 1.3f);
+                ps.Emit(ep, 1);
+            }
         }
 
         /// <summary>A glass beer mug (pivot at the bottom, about 15 cm tall) that sits on the table in front of each player.</summary>
@@ -283,6 +430,7 @@ namespace SecretJenga.Game
             av.BHead = FindDeep(model, "Head");
             var pelvis = FindDeep(model, "pelvis");
             av.BUpperL = FindDeep(model, "upperarm_l");
+            av.BSpine = FindDeep(model, "spine_01");
             av.BUpperR = FindDeep(model, "upperarm_r");
             av.BLowerL = FindDeep(model, "lowerarm_l");
             av.BLowerR = FindDeep(model, "lowerarm_r");
@@ -411,6 +559,9 @@ namespace SecretJenga.Game
             {
                 av.BUpperL.localScale = Vector3.one * 0.0001f;
                 av.BUpperR.localScale = Vector3.one * 0.0001f;
+                // lean over the table when the hand has to reach far (the tower is in the middle of a big table)
+                av.Lean = Mathf.Lerp(av.Lean, av.LeanTarget, 1f - Mathf.Exp(-3.5f * Time.deltaTime));
+                if (av.BSpine != null && av.Lean > 0.1f) av.BSpine.rotation = Quaternion.AngleAxis(av.Lean, seatRight) * av.BSpine.rotation;
             }
 
             // shoulders / head: from the camera for the local player (so leaning moves your arms), from the body otherwise
@@ -520,6 +671,7 @@ namespace SecretJenga.Game
                         follow = 14f;
                     }
                     if (Time.time < av.KnockUntil) pose = HandPoseId.Knock;
+                    contact = LimitHand(av.Seat, shoulderR, contact);
                     HandSync.SubmitLocal(contact, pose);
                 }
                 else if (HandSync.Hands.TryGetValue(clientId, out var net))
@@ -534,6 +686,14 @@ namespace SecretJenga.Game
                 if (Time.time < av.KnockUntil) pose = HandPoseId.Knock;
             }
 
+            // remote bodies lean in as far as the hand needs (computed from where the hand wants to go)
+            if (av.Model != null)
+            {
+                var hip = outward * (SeatLayout.ChairRadius + 2.6f);
+                float need = new Vector2(contact.x - hip.x, contact.z - hip.z).magnitude;
+                av.LeanTarget = Mathf.Clamp((need - 11f) * 4.5f, 0f, 38f);
+            }
+            if (!fromBlock) contact = LimitHand(av.Seat, shoulderR, contact);
             av.Right.SetPose(pose);
             av.Right.SetContact(contact, orient, follow, fromBlock);
             float handlingWobble = active && fromBlock ? wobble * 1.2f : 0f;
@@ -568,12 +728,12 @@ namespace SecretJenga.Game
                         rgt = Vector3.Cross(Vector3.up, f).normalized;
                         show = cam.position + cam.forward * 5.2f - Vector3.up * 1.4f - rgt * 2.0f;
                     }
-                    else show = shoulderL + f * 4.2f + Vector3.up * 2.2f + rgt * 0.8f;
+                    // others: held up just above the table edge in front of them, where everyone's camera looks
+                    else show = outward * (SeatLayout.TableRadius + 0.6f) + Vector3.up * (JengaDims.TableTopY + 5.2f) - rgt * 2.0f;
 
                     float w = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(e / 0.35f)) * Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((len - e) / 0.35f));
                     var palmToOthers = Quaternion.LookRotation(Vector3.up, -f);   // fingers up, palm towards the table
                     var backToOthers = Quaternion.LookRotation(Vector3.up, f);    // fingers up, back of the hand towards the table
-                    var thumbUp = Quaternion.LookRotation(f, -rgt);               // left fist, thumb pointing up
                     Vector3 target = show;
                     Quaternion gOrient = palmToOthers;
                     switch (av.G)
@@ -582,11 +742,6 @@ namespace SecretJenga.Game
                         case Gesture.Horns:
                             leftPose = HandPoseId.Horns;
                             target += Vector3.up * Mathf.Abs(Mathf.Sin(e * 8f)) * 0.5f;
-                            break;
-                        case Gesture.ThumbsUp:
-                            leftPose = HandPoseId.ThumbsUp;
-                            gOrient = thumbUp;
-                            target += Vector3.up * Mathf.Sin(Mathf.Clamp01(e / 0.6f) * Mathf.PI) * 0.4f;
                             break;
                         case Gesture.MiddleFinger:
                             leftPose = HandPoseId.MiddleFinger;
@@ -620,6 +775,55 @@ namespace SecretJenga.Game
                             mugInHand = e > 0.45f && e < 3.2f;
                             w = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(e / 0.45f)) * Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((len - e) / 0.35f));
                             if (av.Local && CameraController.Instance != null) CameraController.Instance.GesturePitch = -14f * tilt;
+                            if (tilt > 0.8f && (av.GFlags & 1) == 0)
+                            {
+                                av.GFlags |= 1;
+                                var gulp = SecretJengaAssets.Instance.gulp;
+                                if (gulp != null) AudioManager.Instance?.PlayAt(gulp, mouth, av.Local ? 0.8f : 0.5f, Random.Range(0.92f, 1.06f));
+                            }
+                            break;
+                        }
+                        case Gesture.Smoke:
+                        {
+                            // pick the cigarette off the ashtray, take a long drag, lower the hand, blow the smoke out, put it back
+                            leftPose = HandPoseId.Cigarette;
+                            var trayAt = mugHome - rgt * 2.6f + f * 0.6f;
+                            Vector3 mouth;
+                            if (av.Local && Camera.main != null)
+                            {
+                                var cam = Camera.main.transform;
+                                mouth = cam.position + cam.forward * 1.3f - Vector3.up * 0.75f;
+                            }
+                            else if (av.BHead != null) mouth = av.BHead.position + f * 1.5f - Vector3.up * 0.5f;
+                            else mouth = headPos + f * 1.5f - Vector3.up * 1.0f;
+                            var pick = trayAt + Vector3.up * 1.2f - f * 0.6f;
+                            var atMouth = mouth + f * 0.9f - Vector3.up * 1.5f;            // fingertips (and the filter) at the lips
+                            var lowered = mouth + f * 2.8f - Vector3.up * 3.2f - rgt * 1.0f;
+                            float toMouth = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.5f, 1.1f, e));
+                            float away = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(2.0f, 2.5f, e));
+                            float back = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(3.7f, 4.25f, e));
+                            target = Vector3.Lerp(Vector3.Lerp(Vector3.Lerp(pick, atMouth, toMouth), lowered, away), pick, back);
+                            // palm towards the face at the lips, then turned sideways while the hand rests lower
+                            var atLips = Quaternion.LookRotation(Vector3.up, f);
+                            var relaxed = Quaternion.LookRotation((f + Vector3.up * 0.6f).normalized, -rgt);
+                            gOrient = Quaternion.Slerp(Quaternion.Slerp(relaxed, atLips, toMouth), relaxed, away);
+                            w = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(e / 0.45f)) * Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((len - e) / 0.35f));
+                            float drag = toMouth * (1f - away);
+                            if (av.Local && CameraController.Instance != null) CameraController.Instance.GesturePitch = -5f * drag;
+                            // ember glows during the drag
+                            if (av.CigEmber != null)
+                            {
+                                av.CigEmber.GetPropertyBlock(_mpb);
+                                _mpb.SetColor("_EmissionColor", new Color(1f, 0.35f, 0.08f) * Mathf.Lerp(1.5f, 6f, drag * (0.75f + 0.25f * Mathf.Sin(e * 30f))));
+                                av.CigEmber.SetPropertyBlock(_mpb);
+                            }
+                            if (e > 2.25f && (av.GFlags & 1) == 0)
+                            {
+                                av.GFlags |= 1;
+                                Puff(av.Smoke, mouth + f * 0.4f, (f + Vector3.up * 0.25f).normalized, 34, 1.6f, 0.7f);
+                                var ex = SecretJengaAssets.Instance.exhale;
+                                if (ex != null) AudioManager.Instance?.PlayAt(ex, mouth, av.Local ? 0.7f : 0.45f, Random.Range(0.9f, 1.05f));
+                            }
                             break;
                         }
                     }
@@ -631,6 +835,38 @@ namespace SecretJenga.Game
             }
             av.Left.SetPose(leftPose);
             av.Left.SetContact(leftPoint, leftOrient, leftFollow);
+
+            // ---------------- ashtray + cigarette (+ a thin wisp from the ember all the time)
+            if (av.Ashtray != null)
+            {
+                var trayHome = mugHome - seatRight * 2.6f + forward * 0.6f;
+                av.Ashtray.position = trayHome;
+                bool cigInHand = av.G == Gesture.Smoke && Time.time - av.GStart > 0.45f && Time.time - av.GStart < 4.15f;
+                if (cigInHand)
+                {
+                    // between index and middle finger, filter towards the palm, lit end out of the back of the hand
+                    var wr = av.Left.Wrist.rotation;
+                    var up = wr * Vector3.up;
+                    av.Cig.SetPositionAndRotation(av.Left.CigarettePoint + up * 0.35f, Quaternion.FromToRotation(Vector3.up, up));
+                }
+                else
+                {
+                    // resting across the rim of the ashtray, lit end over the bowl
+                    av.Cig.SetPositionAndRotation(trayHome + Vector3.up * 0.5f + seatRight * 0.55f, Quaternion.FromToRotation(Vector3.up, -seatRight + Vector3.up * 0.12f));
+                    if (av.CigEmber != null && av.G != Gesture.Smoke)
+                    {
+                        av.CigEmber.GetPropertyBlock(_mpb);
+                        _mpb.SetColor("_EmissionColor", new Color(1f, 0.35f, 0.08f) * (1.2f + 0.4f * Mathf.PerlinNoise(Time.time * 2f, av.Seat)));
+                        av.CigEmber.SetPropertyBlock(_mpb);
+                    }
+                }
+                av.WispTimer -= Time.deltaTime;
+                if (av.WispTimer <= 0f && av.Smoke != null && av.CigEmber != null)
+                {
+                    av.WispTimer = Random.Range(0.18f, 0.32f);
+                    Puff(av.Smoke, av.CigEmber.transform.position, Vector3.up, 1, 0.35f, 0.22f);
+                }
+            }
 
             if (av.Mug != null)
             {

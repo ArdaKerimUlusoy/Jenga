@@ -166,10 +166,11 @@ namespace SecretJenga.UI
             var pts = UIFactory.Rect("Points", colRt);
             UIFactory.LE(pts, 44);
             UIFactory.HLayout(pts, 8, 0, TextAnchor.MiddleLeft, false);
-            int round = r.SurvivalPoints + r.TaskPoints;
+            int round = r.SurvivalPoints + r.TaskPoints + r.PenaltyPoints;
+            string pen = r.PenaltyPoints != 0 ? L.T($"  {r.PenaltyPoints} time", $"  {r.PenaltyPoints} süre") : "";
             var breakdown = UIFactory.Write(pts, FontKind.Type,
-                L.T($"{ScoreRules.Signed(r.SurvivalPoints)} table  {ScoreRules.Signed(r.TaskPoints)} task\n= {ScoreRules.Signed(round)} this round",
-                    $"{ScoreRules.Signed(r.SurvivalPoints)} masa  {ScoreRules.Signed(r.TaskPoints)} görev\n= {ScoreRules.Signed(round)} bu el"),
+                L.T($"{ScoreRules.Signed(r.SurvivalPoints)} table  {ScoreRules.Signed(r.TaskPoints)} task{pen}\n= {ScoreRules.Signed(round)} this round",
+                    $"{ScoreRules.Signed(r.SurvivalPoints)} masa  {ScoreRules.Signed(r.TaskPoints)} görev{pen}\n= {ScoreRules.Signed(round)} bu el"),
                 15, round >= 0 ? Ink.Black : Ink.Red, TextAnchor.MiddleLeft);
             UIFactory.LE(breakdown, 44, -1, 1);
             var total = UIFactory.Write(pts, FontKind.Title, $"{place}.  {r.TotalScore}", 34, champion ? Ink.Red : Ink.Black, TextAnchor.MiddleRight);

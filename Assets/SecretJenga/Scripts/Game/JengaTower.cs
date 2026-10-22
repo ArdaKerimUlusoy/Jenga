@@ -195,7 +195,7 @@ namespace SecretJenga.Game
             var p = b.transform.position;
             p.y = 0;
             float along = Mathf.Abs(Vector3.Dot(p - c, b.LongAxis));
-            return along > JengaDims.BlockLength * 0.87f;
+            return along > JengaDims.BlockLength * 0.8f;
         }
 
         // ------------------------------------------------------------------ Placement on top

@@ -56,12 +56,15 @@ namespace SecretJenga.Game
         /// <summary>Touch-move rule: the block the pressured player must take (0 = none touched yet).</summary>
         public readonly NetworkVariable<ulong> CommittedBlockId = new NetworkVariable<ulong>();
 
-        public const float MaxPullForce = 70f;
+        public const float MaxPullForce = 95f;
+        /// <summary>A collapse this soon after a new turn starts, before the new player touched anything, is blamed on the previous player.</summary>
+        public const float BlameGraceSeconds = 3f;
         public const float MaxDragSpeed = 1.6f;
         public const float NormalLateralFollow = 0.12f;
 
         NetworkGameManager _game;
         BotBrain _bot;
+        ulong _prevActive = ulong.MaxValue;
 
         // ---- server-only turn context
         int _orderIndex = -1;
@@ -120,8 +123,22 @@ namespace SecretJenga.Game
 
         public void ServerBeginFirstTurn() => NextTurn();
 
+        /// <summary>
+        /// Who dropped the tower. Normally the active player - but if the tower comes down in the first seconds of a
+        /// new turn and the new player has not touched a block yet, the wobble was left behind by the previous player.
+        /// </summary>
+        public ulong ServerCollapseCulprit()
+        {
+            ulong active = ActiveClientId.Value;
+            if (Stage.Value == TurnStage.WaitingForGrab && _touched == null && _prevActive != ulong.MaxValue &&
+                _game.TryGetPlayer(_prevActive, out _) && _game.ServerNow - _turnStart < BlameGraceSeconds)
+                return _prevActive;
+            return active;
+        }
+
         public void ServerStop()
         {
+            _prevActive = ulong.MaxValue;
             _bot?.Stop();
             if (_held != null) _held.ServerEndHold();
             _held = null;
@@ -207,6 +224,7 @@ namespace SecretJenga.Game
             }
             _orderIndex = idx;
 
+            _prevActive = ActiveClientId.Value;
             _turnStart = _game.ServerNow;
             _extracted = _autoPlaced = _turnFailed = _timedOut = false;
             _peakWobble = 0f;
@@ -506,9 +524,14 @@ namespace SecretJenga.Game
                 return;
             }
             _timedOut = true;
-            if (Stage.Value == TurnStage.Carrying) PlaceHeld(FirstFreeSlot(), true);
-            else FailTurn();
-            _game.ServerNotify(L.Msg("ran_out", who));
+            if (Stage.Value == TurnStage.Carrying) { PlaceHeld(FirstFreeSlot(), true); _game.ServerNotify(L.Msg("ran_out", who)); }
+            else
+            {
+                // stalling is not a strategy: running out of time without taking a block costs a point
+                FailTurn();
+                _game.ServerAddPenalty(ActiveClientId.Value);
+                _game.ServerNotify(L.Msg("ran_out_penalty", who, ScoreRules.TimeoutPenalty));
+            }
         }
 
         /// <summary>
