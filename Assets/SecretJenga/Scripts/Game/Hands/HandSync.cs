@@ -14,12 +14,15 @@ namespace SecretJenga.Game
         public ulong ClientId;
         public Vector3 Contact;
         public byte Pose;
+        /// <summary>Where this player's camera looks (unit world direction; zero = unknown, e.g. bots).</summary>
+        public Vector3 Look;
 
         public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
         {
             serializer.SerializeValue(ref ClientId);
             serializer.SerializeValue(ref Contact);
             serializer.SerializeValue(ref Pose);
+            serializer.SerializeValue(ref Look);
         }
     }
 
@@ -50,18 +53,30 @@ namespace SecretJenga.Game
         float _broadcastTimer, _sendTimer;
         static HandSync _instance;
 
-        public override void OnNetworkSpawn() { _instance = this; Hands.Clear(); }
+        public override void OnNetworkSpawn() { _instance = this; Hands.Clear(); _hasPending = false; }
         public override void OnNetworkDespawn() { if (_instance == this) _instance = null; Hands.Clear(); }
 
-        /// <summary>Called by the local hand every frame; throttled here.</summary>
+        static Vector3 _pendingContact;
+        static HandPoseId _pendingPose;
+        static bool _hasPending;
+
+        /// <summary>Called by the local hand every frame; sent ~15 times a second from Update (with the look direction).</summary>
         public static void SubmitLocal(Vector3 contact, HandPoseId pose)
         {
-            var s = _instance;
-            if (s == null || !s.IsSpawned) return;
-            s._sendTimer -= Time.deltaTime;
-            if (s._sendTimer > 0f) return;
-            s._sendTimer = SendInterval;
-            s.SubmitServerRpc(contact, (byte)pose);
+            _pendingContact = contact;
+            _pendingPose = pose;
+            _hasPending = true;
+        }
+
+        /// <summary>Every client: send our hand and where our camera looks (the head of our character follows it).</summary>
+        void ClientSend()
+        {
+            _sendTimer -= Time.deltaTime;
+            if (_sendTimer > 0f || !_hasPending) return;
+            _sendTimer = SendInterval;
+            var cam = Camera.main;
+            var look = cam != null ? cam.transform.forward : Vector3.zero;
+            SubmitServerRpc(_pendingContact, (byte)_pendingPose, look);
         }
 
         /// <summary>Host only: publish a bot's hand (bots have no client to send it).</summary>
@@ -152,11 +167,13 @@ namespace SecretJenga.Game
         }
 
         [Rpc(SendTo.Server, Delivery = RpcDelivery.Unreliable, InvokePermission = RpcInvokePermission.Everyone)]
-        void SubmitServerRpc(Vector3 contact, byte pose, RpcParams rpc = default)
+        void SubmitServerRpc(Vector3 contact, byte pose, Vector3 look, RpcParams rpc = default)
         {
             if (float.IsNaN(contact.x) || float.IsNaN(contact.y) || float.IsNaN(contact.z)) return;
+            if (float.IsNaN(look.x) || float.IsNaN(look.y) || float.IsNaN(look.z) || look.sqrMagnitude < 0.01f) look = Vector3.zero;
+            else look = look.normalized;
             ulong id = rpc.Receive.SenderClientId;
-            _server[id] = new HandNetState { ClientId = id, Contact = ClampToTable(contact), Pose = (byte)Mathf.Min(pose, (int)HandPoseId.Cigarette) };
+            _server[id] = new HandNetState { ClientId = id, Contact = ClampToTable(contact), Pose = (byte)Mathf.Min(pose, (int)HandPoseId.Cigarette), Look = look };
         }
 
         [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
@@ -173,6 +190,7 @@ namespace SecretJenga.Game
 
         void Update()
         {
+            if (IsSpawned && IsClient) ClientSend();
             if (!IsSpawned || !IsServer) return;
             ServerBotGestures();
             _broadcastTimer -= Time.deltaTime;

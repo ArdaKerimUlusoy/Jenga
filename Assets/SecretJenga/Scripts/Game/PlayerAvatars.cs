@@ -40,6 +40,10 @@ namespace SecretJenga.Game
             public Vector3 PelvisOffset;     // pelvis position relative to the model root (scaled, model space)
             public Quaternion FacingFix = Quaternion.identity;
             public Quaternion HeadExtra = Quaternion.identity;
+            // head look: the head bone's rotation relative to a level, forward-facing frame (from the bind pose)
+            public Quaternion HeadOffset = Quaternion.identity;
+            public bool HasHeadOffset;
+            public Vector3 LookDir;
             // the pose the bones had before we added lean / head turn on top (see RestoreBone)
             public Quaternion SpineBase, SpineSet, HeadBase, HeadSet;
             public bool SpineTouched, HeadTouched;
@@ -440,6 +444,9 @@ namespace SecretJenga.Game
             var footL = FindDeep(model, "foot_l");
             var footR = FindDeep(model, "foot_r");
             if (av.BHead == null || pelvis == null || av.BUpperL == null || av.BUpperR == null) { Destroy(go); return false; }
+            // bind pose (before any animation): the head is level and faces the model's forward - remember how the
+            // head bone sits in that frame, so later we can point the head exactly where the player looks
+            var bindHead = Quaternion.Inverse(av.Root.transform.rotation) * av.BHead.rotation;
 
             av.Anim = go.GetComponentInChildren<Animator>();
             if (av.Anim == null) av.Anim = go.AddComponent<Animator>();
@@ -469,6 +476,8 @@ namespace SecretJenga.Game
                 fwd = fwd.sqrMagnitude > 1e-6f ? fwd.normalized : Vector3.forward;
             }
             av.FacingFix = Quaternion.FromToRotation(fwd, Vector3.forward);
+            av.HeadOffset = Quaternion.Inverse(Quaternion.LookRotation(fwd, Vector3.up)) * bindHead;
+            av.HasHeadOffset = true;
             av.PelvisOffset = av.FacingFix * (pelvisL * av.ModelScale);
             av.PelvisOffset.y = 0f;
             av.Model = model;
@@ -530,6 +539,23 @@ namespace SecretJenga.Game
         {
             if (touched && Quaternion.Angle(bone.localRotation, lastSet) < 0.01f) bone.localRotation = basePose;
             basePose = bone.localRotation;
+        }
+
+        /// <summary>
+        /// The direction a remote head should face: the player's real camera direction when known, otherwise the
+        /// fallback (tower / held block). Limited to what a neck can do: +-80 degrees sideways, 55 down, 40 up.
+        /// </summary>
+        static Vector3 HeadLookDir(ulong clientId, Vector3 bodyFwd, Vector3 fallback)
+        {
+            var want = fallback;
+            if (HandSync.Hands.TryGetValue(clientId, out var hs) && hs.Look.sqrMagnitude > 0.5f) want = hs.Look;
+            if (want.sqrMagnitude < 1e-4f) want = bodyFwd;
+            var flat = new Vector3(want.x, 0f, want.z);
+            float yaw = flat.sqrMagnitude > 1e-4f ? Vector3.SignedAngle(bodyFwd, flat, Vector3.up) : 0f;
+            yaw = Mathf.Clamp(yaw, -80f, 80f);
+            float pitch = Mathf.Clamp(Mathf.Asin(Mathf.Clamp(want.normalized.y, -1f, 1f)) * Mathf.Rad2Deg, -55f, 40f);
+            var h = Quaternion.AngleAxis(yaw, Vector3.up) * bodyFwd;
+            return (h * Mathf.Cos(pitch * Mathf.Deg2Rad) + Vector3.up * Mathf.Sin(pitch * Mathf.Deg2Rad)).normalized;
         }
 
         static Vector3 RestPoint(int seat, float side, Vector3 right)
@@ -912,22 +938,31 @@ namespace SecretJenga.Game
             if (av.Local) return;
             if (av.Model != null)
             {
-                // turn the animated head towards what matters (the tower, the held block, a hovering hand)
+                // the head looks where that player's camera looks (sent through HandSync); bots look at what matters
                 var bodyFwd = SeatLayout.Facing(av.Seat) * Vector3.forward;
-                var want = (lookAt - av.BHead.position).normalized;
-                var delta = Quaternion.FromToRotation(bodyFwd, want);
-                delta = Quaternion.RotateTowards(Quaternion.identity, delta, 45f);
-                av.HeadExtra = Quaternion.Slerp(av.HeadExtra, delta, 1f - Mathf.Exp(-3f * Time.deltaTime));
+                var dir = HeadLookDir(clientId, bodyFwd, (lookAt - av.BHead.position).normalized);
+                if (av.LookDir.sqrMagnitude < 0.5f) av.LookDir = dir;
+                av.LookDir = Vector3.Slerp(av.LookDir, dir, 1f - Mathf.Exp(-9f * Time.deltaTime)).normalized;
                 RestoreBone(av.BHead, ref av.HeadTouched, av.HeadSet, ref av.HeadBase);
-                av.BHead.rotation = av.HeadExtra * av.BHead.rotation;
+                if (av.HasHeadOffset)
+                {
+                    // absolute and level: no tilt from the leaning spine or the idle animation
+                    av.BHead.rotation = Quaternion.LookRotation(av.LookDir, Vector3.up) * av.HeadOffset;
+                }
+                else
+                {
+                    var delta = Quaternion.FromToRotation(bodyFwd, av.LookDir);
+                    av.BHead.rotation = delta * av.BHead.rotation;
+                }
                 av.HeadSet = av.BHead.localRotation;
                 av.HeadTouched = true;
                 av.Label.position = av.BHead.position + Vector3.up * 8.5f;
             }
             else
             {
-                var headRot = Quaternion.LookRotation((lookAt - headPos).normalized, Vector3.up);
-                av.Head.SetPositionAndRotation(headPos, Quaternion.Slerp(av.Head.rotation, headRot, 1f - Mathf.Exp(-3f * Time.deltaTime)));
+                var dir = HeadLookDir(clientId, SeatLayout.Facing(av.Seat) * Vector3.forward, (lookAt - headPos).normalized);
+                var headRot = Quaternion.LookRotation(dir, Vector3.up);
+                av.Head.SetPositionAndRotation(headPos, Quaternion.Slerp(av.Head.rotation, headRot, 1f - Mathf.Exp(-9f * Time.deltaTime)));
                 av.Torso.localScale = new Vector3(1f, 1f + Mathf.Sin(Time.time * 1.4f + av.Seat) * 0.008f, 1f);
                 av.Label.position = headPos + Vector3.up * 2.9f;
             }
