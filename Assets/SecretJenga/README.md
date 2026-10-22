@@ -1,10 +1,32 @@
 # THE LAST BLOCK — playable prototype
 
-Online, first-person, physics-based Jenga for 2–5 players (or you against bots) in an old frontier saloon.
+Online, first-person, physics-based Jenga for 2–5 players (or you against bots) in a kids' bedroom.
 No turn limit — the tower stands until somebody drops it, **and whoever drops it loses**. Secret personal tasks,
 three experimental cards, host-authoritative physics, English / Türkçe.
 
 ---
+
+## Sürüm 0.3: çocuk odası (Türkçe)
+
+* **Mekân:** salon yerine akşam saatlerinde bir çocuk odası. Gökkuşağı halının üstünde yuvarlak bir çocuk masası ve
+  beş renkli sandalye var. Odada ranza, oyuncak rafları (küpler, toplar, kitaplar, ördekler), pencerenin altında
+  masa lambalı bir çalışma masası, ay ışığı, peri ışıkları, tavanda fosforlu yıldızlar, oyuncak sandığı, minder
+  koltuk, oyun halısı, oyuncak araba, ayıcıklar ve pastel boya resimler bulunuyor. Müzik kutusu ninnisi çalıyor,
+  duvar saati tıkırdıyor.
+* **Karakterler:** çocuklar (`Models/Characters/TLB_Kid.fbx`, `Tools~/blender_build_kid.py` ile Quaternius UAL'den
+  üretilir). Büyük yuvarlak kafa, göz ve gülümseme, kep ya da saç, oyuncu renginde tişört, şort, çorap ve spor
+  ayakkabı var. Sandalyede ayakları sallanıyor.
+* **Kaybetme sahnesi:** kuleyi deviren olursa yatak odasının kapısı gıcırdayarak açılır. Elinde düdüklü plastik
+  çekiçle büyük bir çocuk girer, masanın etrafından dolaşıp kaybedenin arkasına geçer ve *CIYK! BONK!* diye vurur.
+  Kaybeden masaya kapaklanır, kafasının etrafında yıldızlar döner, kuşlar öter, odadaki çocuklar sevinir. Herkesin
+  kamerası sahneye döner; kaybeden kendi ekranında masaya düşer. Sonra sonuç ekranı gelir (`KidsRoomLife`).
+* **Odada yaşam:** ranzada sohbet eden iki çocuk, yerde oynayan, rafın önünde küplerle uğraşan, minder koltukta
+  oturan ve odada dolaşan çocuklar var. Bunlar yalnızca görseldir, ağ trafiği yoktur.
+* **El hareketleri:** 2 lolipop, 3 nanik (başparmak burunda), 4 meyve suyu. Sigara, bira ve orta parmak kaldırıldı.
+* **Arayüz:** çizgili defter sayfası, sarı yapışkan notlar, renkli washi bant, pastel boya çizgileri. Yazı tipleri
+  Baloo 2, Patrick Hand ve Grandstander (SIL OFL, Türkçe harfli).
+* **Sesler / dokular:** `Tools~/generate_kidsroom_audio.py`, `generate_kidsroom_textures.py` ve
+  `generate_ui_textures_kids.py`. Hepsi kodla üretilir.
 
 ## Sürüm 0.2'de neler değişti (Türkçe)
 

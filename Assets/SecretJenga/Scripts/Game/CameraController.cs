@@ -41,6 +41,12 @@ namespace SecretJenga.Game
         /// <summary>Extra pitch set by gestures (tilting the head back while drinking). Negative = look up.</summary>
         public float GesturePitch { get; set; }
 
+        /// <summary>Cinematic look (the squeaky-hammer scene): blend the view towards this point, 0..1.</summary>
+        public Vector3 CineFocus { get; set; }
+        public float CineWeight { get; set; }
+        /// <summary>0..1: you got bonked - the head drops forward onto the table and tilts.</summary>
+        public float KO { get; set; }
+
         /// <summary>Seat the camera currently uses (local player's seat, or 0 in menus).</summary>
         public int Seat => _seat;
 
@@ -209,6 +215,16 @@ namespace SecretJenga.Game
                 pos += Random.insideUnitSphere * k;
                 rot *= Quaternion.Euler(Random.Range(-1f, 1f) * k * 6f, Random.Range(-1f, 1f) * k * 6f, 0f);
                 if (_shakeTime <= 0f) _shakeAmount = 0f;
+            }
+
+            if (CineWeight > 0.001f && (CineFocus - pos).sqrMagnitude > 0.01f)
+                rot = Quaternion.Slerp(rot, Quaternion.LookRotation(CineFocus - pos, Vector3.up), Mathf.Clamp01(CineWeight));
+            if (KO > 0.001f)
+            {
+                // bonked: the head goes down onto the table, a little sideways
+                float k = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(KO));
+                pos += inward3 * (2.2f * k) - Vector3.up * (5.2f * k);
+                rot = Quaternion.Slerp(rot, Quaternion.LookRotation(inward3 * 0.35f - Vector3.up, Vector3.up), k * 0.8f) * Quaternion.Euler(0f, 0f, 24f * k);
             }
 
             transform.SetPositionAndRotation(pos, rot);

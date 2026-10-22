@@ -87,7 +87,7 @@ namespace SecretJenga
             { "left", ("{0} left the table.", "{0} masadan kalktı.") },
             { "lost_conn", ("{0} lost connection. Their turns are skipped until they return.", "{0} bağlantıyı kaybetti. Dönene kadar sırası atlanacak.") },
             { "bot_join", ("{0} pulls up a chair.", "{0} bir sandalye çekti.") },
-            { "bot_left", ("{0} leaves the saloon.", "{0} salondan çıktı.") },
+            { "bot_left", ("{0} leaves the room.", "{0} odadan çıktı.") },
             { "already_running", ("A round is already running.", "Zaten bir el oynanıyor.") },
             { "need_two", ("Need at least 2 players at the table (add a bot to play alone).", "Masada en az 2 oyuncu gerekli (tek başına oynamak için bot ekle).") },
             { "wait_ready", ("Waiting for everyone to be ready.", "Herkesin hazır olması bekleniyor.") },

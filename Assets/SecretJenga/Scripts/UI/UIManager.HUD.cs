@@ -104,8 +104,8 @@ namespace SecretJenga.UI
             _hudHint = UIFactory.Write(g.transform, FontKind.Body, "", 27, Ink.Bone, TextAnchor.MiddleCenter, FontStyle.Italic);
             UIFactory.Place(_hudHint.rectTransform, new Vector2(0.5f, 0), new Vector2(0.5f, 0), new Vector2(0, 78), new Vector2(1100, 44));
             var controls = UIFactory.Write(g.transform, FontKind.Type,
-                L.T("mouse  look   hold LMB  pull   ALT  free cursor   A/D  lean   W/S  closer   F  knock   C  card   TAB  task   ESC\n1  OK    2  smoke    3  middle finger    4  sip of beer    5  wave    6  rock on",
-                    "fare  bak   sol tık basılı  çek   ALT  imleç   A/D  eğil   W/S  yaklaş   F  masaya vur   C  kart   TAB  görev   ESC\n1  tamam    2  sigara    3  orta parmak    4  bira yudumu    5  el salla    6  rock"), 15, Ink.BoneFaint, TextAnchor.MiddleCenter);
+                L.T("mouse  look   hold LMB  pull   ALT  free cursor   A/D  lean   W/S  closer   F  knock   C  card   TAB  task   ESC\n1  OK    2  lollipop    3  nyah nyah    4  sip of juice    5  wave    6  rock on",
+                    "fare  bak   sol tık basılı  çek   ALT  imleç   A/D  eğil   W/S  yaklaş   F  masaya vur   C  kart   TAB  görev   ESC\n1  tamam    2  lolipop    3  nanik    4  meyve suyu    5  el salla    6  rock"), 15, Ink.BoneFaint, TextAnchor.MiddleCenter);
             UIFactory.Place(controls.rectTransform, new Vector2(0.5f, 0), new Vector2(0.5f, 0), new Vector2(0, 30), new Vector2(1300, 44));
 
             // ---------------- cursor prompt (written beside the hand)

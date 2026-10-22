@@ -31,7 +31,7 @@ namespace SecretJenga
         public Material dustMaterial;
 
         [Header("Characters")]
-        [Tooltip("Rigged saloon patron (Quaternius UAL mannequin, CC0) with cowboy hat. Optional - falls back to the procedural bodies.")]
+        [Tooltip("Rigged kid (Quaternius UAL mannequin, CC0, dressed by Tools~/blender_build_kid.py). Optional - falls back to the procedural bodies.")]
         public GameObject cowboyModel;
         public RuntimeAnimatorController cowboyAnimator;
         public Material skinMaterial;
@@ -73,6 +73,10 @@ namespace SecretJenga
 
         [Header("Audio - saloon")]
         public AudioClip saloonPiano, saloonMurmur, lighter, exhale, gulp;
+
+        [Header("Audio - kids' room (the toy hammer, the door, footsteps)")]
+        public AudioClip squeak, bonk, birdiesLoop, whoosh, doorCreak, sadTrombone;
+        public AudioClip[] steps;
 
         [Header("Audio - UI / round")]
         public AudioClip uiHover, uiClick, missionComplete, turnStart, timerTick, win, lose, countdown, error, cardPlayed;

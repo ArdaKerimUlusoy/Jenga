@@ -284,7 +284,7 @@ namespace SecretJenga.Game
         }
 
         // ------------------------------------------------------------------ Server: bots
-        static readonly string[] BotNames = { "Doc Holloway", "Slim Jenkins", "Calamity Rose", "Dusty Pete", "Rattlesnake Ray", "Whiskey Jack", "Ma Barker", "Two-Bit Tom" };
+        static readonly string[] BotNames = { "Ayşe", "Mert", "Elif", "Can", "Defne", "Arda", "Zeynep", "Emir" };
         ulong _nextBotId = GameRules.BotIdBase;
 
         public bool ServerAddBot()

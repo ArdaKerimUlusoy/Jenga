@@ -41,7 +41,7 @@ namespace SecretJenga.UI
             UIFactory.LE(title, 118 * scale);
             var rule = UIFactory.Image(parent, "Rule", UIFactory.StrokeSprite, Ink.RedBright, false);
             UIFactory.LE(rule, 12 * scale, 430 * scale);
-            var tag = UIFactory.Write(parent, FontKind.Body, L.T("One tower. One saloon. Whoever drops it loses.", "Tek kule. Tek salon. Yıkan kaybeder."), Mathf.RoundToInt(28 * scale), Ink.BoneDim, TextAnchor.MiddleLeft, FontStyle.Italic);
+            var tag = UIFactory.Write(parent, FontKind.Body, L.T("One tower. One table. Whoever drops it gets bonked.", "Tek kule. Tek masa. Yıkana çekiç var."), Mathf.RoundToInt(28 * scale), Ink.BoneDim, TextAnchor.MiddleLeft, FontStyle.Italic);
             UIFactory.LE(tag, 44 * scale);
         }
 
@@ -469,18 +469,18 @@ namespace SecretJenga.UI
             UIFactory.Divider(col);
             var t = UIFactory.Write(col, FontKind.Type, L.T(
                 "THE LAST BLOCK - a prototype.\n\n" +
-                "An online, first-person tabletop game in an old\nfrontier saloon: one wooden tower, five chairs.\n\n" +
+                "An online, first-person tabletop game in a kids'\nbedroom: one wooden tower, five little chairs.\n\n" +
                 "Unity 6 / Netcode for GameObjects / Unity Transport\n(Unity Relay + Lobby optional).\n\n" +
-                "Characters: Universal Animation Library by Quaternius (CC0),\ndressed as saloon patrons by the project's Blender script.\n" +
+                "Characters: Universal Animation Library by Quaternius (CC0),\ndressed as kids by the project's Blender script.\n" +
                 "Room, textures and sounds are made by the project's own tools.\n" +
-                "Type: IM Fell English (Igino Marini, OFL), Special Elite (Astigmatic, Apache 2.0).\n\n" +
+                "Type: Baloo 2, Patrick Hand, Grandstander (all SIL Open Font License).\n\n" +
                 "Jenga is a trademark of its owner. Non-commercial prototype.",
                 "THE LAST BLOCK - bir prototip.\n\n" +
-                "Eski bir kovboy salonunda geçen, çevrimiçi, birinci şahıs\nbir masa oyunu: tek ahşap kule, beş sandalye.\n\n" +
+                "Bir çocuk odasında geçen, çevrimiçi, birinci şahıs\nbir masa oyunu: tek ahşap kule, beş küçük sandalye.\n\n" +
                 "Unity 6 / Netcode for GameObjects / Unity Transport\n(Unity Relay + Lobby isteğe bağlı).\n\n" +
-                "Karakterler: Quaternius - Universal Animation Library (CC0),\nprojenin Blender betiğiyle salon müdavimi olarak giydirildi.\n" +
+                "Karakterler: Quaternius - Universal Animation Library (CC0),\nprojenin Blender betiğiyle çocuk olarak giydirildi.\n" +
                 "Oda, dokular ve sesler projenin kendi araçlarıyla üretildi.\n" +
-                "Yazı tipleri: IM Fell English (Igino Marini, OFL), Special Elite (Astigmatic, Apache 2.0).\n\n" +
+                "Yazı tipleri: Baloo 2, Patrick Hand, Grandstander (SIL Open Font License).\n\n" +
                 "Jenga, sahibinin ticari markasıdır. Ticari olmayan prototip."), 21, Ink.Black, TextAnchor.UpperLeft);
             UIFactory.LE(t, 440);
             UIFactory.LE(UIFactory.Rect("Push", col), -1, -1, -1, 1);

@@ -364,12 +364,24 @@ namespace SecretJenga.UI
                         ShowScreen(View.Hud);
                         break;
                     case GamePhase.GameOver:
-                        UITween.Delay(1.8f, () => { if (_game != null && _game.Phase.Value == GamePhase.GameOver) { ClosePauseIfOpen(); ShowScreen(View.Results); } });
+                        ShowResultsWhenReady(1.8f);
                         break;
                 }
             }
             if (_current == View.Lobby) RefreshLobby();
             if (_current == View.Results) RefreshResults();
+        }
+
+        /// <summary>The results come in once the room has had its moment (the squeaky-hammer scene, see KidsRoomLife).</summary>
+        void ShowResultsWhenReady(float delay)
+        {
+            UITween.Delay(delay, () =>
+            {
+                if (_game == null || _game.Phase.Value != GamePhase.GameOver || _current == View.Results) return;
+                if (SecretJenga.Game.KidsRoomLife.HoldResults) { ShowResultsWhenReady(0.25f); return; }
+                ClosePauseIfOpen();
+                ShowScreen(View.Results);
+            });
         }
 
         void OnNotification(string msg) => Toast(msg, Palette.Cream);

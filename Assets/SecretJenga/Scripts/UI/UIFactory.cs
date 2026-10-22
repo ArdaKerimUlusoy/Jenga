@@ -8,28 +8,32 @@ namespace SecretJenga.UI
 {
     public enum ButtonStyle { Primary, Secondary, Danger, Ghost, Good }
 
-    /// <summary>Ink colours. Text on paper is written in dark ink; text straight over the dark room is bone white.</summary>
+    /// <summary>
+    /// Crayon and pencil colours of the kids' room. On paper (notebook pages, sticky notes) things are written in
+    /// navy pencil and red crayon; straight over the room the text is chalk white. (The names stay from the old
+    /// ink-on-paper look so the screens did not have to change.)
+    /// </summary>
     public static class Ink
     {
-        public static readonly Color Black = new Color(0.13f, 0.105f, 0.085f);
-        public static readonly Color Faded = new Color(0.36f, 0.31f, 0.26f);
-        public static readonly Color Pencil = new Color(0.36f, 0.31f, 0.26f, 0.45f);
-        public static readonly Color Red = new Color(0.60f, 0.11f, 0.07f);
-        public static readonly Color RedBright = new Color(0.78f, 0.20f, 0.14f);
-        public static readonly Color Green = new Color(0.20f, 0.30f, 0.18f);
-        public static readonly Color Bone = new Color(0.87f, 0.83f, 0.74f);
-        public static readonly Color BoneDim = new Color(0.62f, 0.58f, 0.52f);
-        public static readonly Color BoneFaint = new Color(0.87f, 0.83f, 0.74f, 0.32f);
-        public static readonly Color Shadow = new Color(0f, 0f, 0f, 0.75f);
+        public static readonly Color Black = new Color(0.15f, 0.2f, 0.38f);          // navy pencil
+        public static readonly Color Faded = new Color(0.4f, 0.45f, 0.6f);
+        public static readonly Color Pencil = new Color(0.4f, 0.45f, 0.6f, 0.45f);
+        public static readonly Color Red = new Color(0.88f, 0.26f, 0.24f);           // red crayon
+        public static readonly Color RedBright = new Color(1f, 0.5f, 0.36f);         // on the room: a warm coral
+        public static readonly Color Green = new Color(0.2f, 0.6f, 0.32f);
+        public static readonly Color Bone = new Color(1f, 0.98f, 0.94f);             // chalk white
+        public static readonly Color BoneDim = new Color(0.84f, 0.86f, 0.94f);
+        public static readonly Color BoneFaint = new Color(1f, 0.98f, 0.94f, 0.4f);
+        public static readonly Color Shadow = new Color(0.05f, 0.05f, 0.15f, 0.75f);
     }
 
     public enum FontKind { Title, Body, Type }
 
     /// <summary>
-    /// Builds the hand-made looking uGUI in code: torn paper sheets held by tape, typewritten fields with ink
-    /// underlines, words you click instead of boxes, wax-like ink marks for players. Everything is generated
-    /// from a few greyscale/white sprites (Tools~/generate_ui_textures.py) and three fonts (IM Fell English SC,
-    /// IM Fell English, Special Elite - all SIL OFL / Apache, see Fonts/). Missing assets fall back gracefully.
+    /// Builds the kids'-room uGUI in code: notebook pages and sticky notes held by washi tape, fields on ruled lines,
+    /// words you click (a crayon line draws itself under them), sticker dots for players. Everything is generated
+    /// from a few sprites (Tools~/generate_ui_textures_kids.py) and three fonts (Baloo 2, Patrick Hand, Grandstander -
+    /// SIL OFL, see Fonts/). Missing assets fall back gracefully.
     /// </summary>
     public static class UIFactory
     {

@@ -6,9 +6,10 @@ using UnityEngine.InputSystem;
 namespace SecretJenga.Game
 {
     /// <summary>
-    /// Seated figures and their hands. Every other player sits in their chair as a saloon patron (rigged CC0
-    /// mannequin with a cowboy hat, animated with seated idle clips) and reaches over the table with two articulated
-    /// hands (HandRig). If the character model is missing, a simple hooded body is used instead.
+    /// Seated figures and their hands. Every other player sits in their chair as a kid (rigged CC0 mannequin dressed
+    /// in a t-shirt and shorts, with a cap or a mop of hair, a big round head and short legs that dangle from the
+    /// chair, animated with seated idle clips) and reaches over the table with two articulated hands (HandRig).
+    /// If the character model is missing, a simple hooded body is used instead.
     /// The local player sees only their own two hands (first person, without the upper arm so it never hides the tower).
     ///
     /// Your right hand IS your cursor: it rests flat on the table and slides with the mouse inside your own reach,
@@ -17,9 +18,11 @@ namespace SecretJenga.Game
     /// and the free slots stay visible. With rising tension the hands tremble and the fingers drum. F knocks.
     /// All of this is shared through HandSync (bots publish their hands from the host). Purely visual.
     ///
-    /// Gestures (left hand, number keys): 1 OK sign, 2 a drag on the cigarette from the ashtray (with smoke),
-    /// 3 middle finger, 4 a sip of beer from the mug in front of you, 5 wave, 6 "rock on".
-    /// Everyone at the table sees them; bots make them too.
+    /// Gestures (left hand, number keys): 1 OK sign, 2 a lick of the lollipop from the cup in front of you,
+    /// 3 "nyah nyah" (thumb on the nose, fingers wiggling), 4 a sip of juice, 5 wave, 6 "rock on".
+    /// Everyone at the table sees them; bots make them too. (The network names of the gestures are unchanged.)
+    /// When a player knocks the tower over, KidsRoomLife sends another kid with a squeaky hammer: SetKnockedOut makes
+    /// that player's kid slump onto the table.
     /// </summary>
     public class PlayerAvatars : MonoBehaviour
     {
@@ -55,6 +58,9 @@ namespace SecretJenga.Game
             public ParticleSystem Smoke;
             public int GFlags;          // one-shot events inside the current gesture (sounds, smoke puff)
             public float WispTimer;
+            // kid proportions + knocked out by the squeaky hammer
+            public Transform BThighL, BThighR;
+            public float KO;            // 0..1, set by KidsRoomLife
         }
 
         static Mesh _cigMesh, _emberMesh, _ashtrayMesh;
@@ -70,10 +76,10 @@ namespace SecretJenga.Game
             switch (g)
             {
                 case Gesture.Ok: return L.T("OK!", "Tamam!");
-                case Gesture.Smoke: return L.T("Fhhh...", "Fuuuh...");
-                case Gesture.MiddleFinger: return "#@$%!";
-                case Gesture.Beer: return L.T("Cheers!", "Şerefe!");
-                case Gesture.Wave: return L.T("Howdy!", "Selam!");
+                case Gesture.Smoke: return L.T("Mmm, lollipop!", "Mmm, lolipop!");
+                case Gesture.MiddleFinger: return L.T("Nyah nyah!", "Nanik!");
+                case Gesture.Beer: return L.T("Juice!", "Meyve suyu!");
+                case Gesture.Wave: return L.T("Hi!", "Selam!");
                 case Gesture.Horns: return L.T("Rock on!", "Rock!");
                 default: return "";
             }
@@ -97,13 +103,20 @@ namespace SecretJenga.Game
         public static float GestureLength(Gesture g) => g == Gesture.Beer ? 3.6f : g == Gesture.Smoke ? 4.6f : g == Gesture.Wave ? 2.3f : 2.0f;
 
         static readonly string[] SitStates = { "Sitting_Idle_Loop", "Sitting_Idle02_Loop", "Sitting_Idle03_Loop", "Sitting_Talking_Loop", "Sitting_Nodding_Loop" };
-        static readonly Color[] Shirts = { new Color(0.78f, 0.72f, 0.6f), new Color(0.55f, 0.18f, 0.14f), new Color(0.32f, 0.38f, 0.5f), new Color(0.6f, 0.55f, 0.42f), new Color(0.3f, 0.36f, 0.26f) };
-        static readonly Color[] Hats = { new Color(0.33f, 0.22f, 0.13f), new Color(0.12f, 0.1f, 0.09f), new Color(0.55f, 0.42f, 0.28f), new Color(0.24f, 0.17f, 0.12f) };
-        // slightly desaturated: the warm oil-lamp light adds the rest (fully saturated tones read as orange plastic)
-        static readonly Color[] Skins = { new Color(0.84f, 0.69f, 0.62f), new Color(0.74f, 0.57f, 0.48f), new Color(0.56f, 0.42f, 0.35f), new Color(0.9f, 0.77f, 0.7f) };
+        // kids' clothes: the t-shirt is in the player's colour; shorts, shoes, cap and hair vary per player
+        static readonly Color[] Shirts = { new Color(0.95f, 0.85f, 0.35f), new Color(0.35f, 0.75f, 0.85f), new Color(0.95f, 0.55f, 0.6f), new Color(0.55f, 0.8f, 0.45f), new Color(0.98f, 0.98f, 0.95f) };
+        static readonly Color[] Hats = { new Color(0.85f, 0.2f, 0.18f), new Color(0.2f, 0.45f, 0.85f), new Color(0.98f, 0.8f, 0.2f), new Color(0.25f, 0.65f, 0.35f), new Color(0.55f, 0.35f, 0.8f) };
+        static readonly Color[] Shorts = { new Color(0.24f, 0.3f, 0.48f), new Color(0.75f, 0.55f, 0.35f), new Color(0.3f, 0.45f, 0.3f), new Color(0.55f, 0.2f, 0.25f), new Color(0.35f, 0.35f, 0.38f) };
+        static readonly Color[] ShoeCols = { new Color(0.9f, 0.2f, 0.18f), new Color(0.95f, 0.95f, 0.95f), new Color(0.2f, 0.4f, 0.85f), new Color(0.15f, 0.15f, 0.17f), new Color(0.98f, 0.75f, 0.2f) };
+        static readonly Color[] HairCols = { new Color(0.22f, 0.13f, 0.07f), new Color(0.08f, 0.06f, 0.05f), new Color(0.75f, 0.55f, 0.25f), new Color(0.55f, 0.25f, 0.1f), new Color(0.35f, 0.22f, 0.12f) };
+        static readonly Color[] Skins = { new Color(0.95f, 0.78f, 0.66f), new Color(0.84f, 0.64f, 0.5f), new Color(0.62f, 0.44f, 0.33f), new Color(0.98f, 0.84f, 0.74f) };
 
-        /// <summary>Head-bone height of the seated character above the floor, in game units (1.18 m).</summary>
-        const float SeatedHeadHeight = 23.5f;
+        /// <summary>Head-bone height of the seated kid above the floor, in game units (95 cm).</summary>
+        const float SeatedHeadHeight = 19.5f;
+        /// <summary>Kid proportions on the adult mannequin: shorter body and legs, a big round head.</summary>
+        const float KidSpine = 0.88f, KidHead = 1.5f, KidThigh = 0.8f;
+
+        public static PlayerAvatars Instance { get; private set; }
 
         readonly Dictionary<ulong, Avatar> _avatars = new Dictionary<ulong, Avatar>();
         readonly List<ulong> _remove = new List<ulong>();
@@ -112,6 +125,7 @@ namespace SecretJenga.Game
 
         void Awake()
         {
+            Instance = this;
             var a = SecretJengaAssets.Instance;
             _skin = a.skinMaterial != null ? a.skinMaterial : RuntimeArt.MakeLit(new Color(0.66f, 0.56f, 0.5f), 0.35f);
             _cloth = a.clothMaterial != null ? a.clothMaterial : RuntimeArt.MakeLit(new Color(0.16f, 0.15f, 0.15f), 0.1f);
@@ -132,6 +146,7 @@ namespace SecretJenga.Game
 
         void OnDestroy()
         {
+            if (Instance == this) Instance = null;
             HandSync.Knocked -= OnKnocked;
             HandSync.GestureMade -= OnGesture;
         }
@@ -228,11 +243,11 @@ namespace SecretJenga.Game
             Material handSkin = _skin, handCloth = _cloth;
             if (local)
             {
-                // your own hands match the saloon patrons: a natural skin tone and a rolled-up shirt sleeve
+                // your own hands match the other kids: a natural skin tone and a t-shirt sleeve in your colour
                 int lh = StableHash(playerName);
                 var sc = Skins[(lh / 13) % Skins.Length];
                 handSkin = RuntimeArt.MakeLit(new Color(sc.r * 0.95f, sc.g * 0.9f, sc.b * 0.92f), 0.32f);
-                handCloth = RuntimeArt.MakeLit(Shirts[lh % Shirts.Length], 0.12f);
+                handCloth = RuntimeArt.MakeLit(Color.Lerp(Palette.Player(colorIndex), Color.white, 0.15f), 0.12f);
             }
             else
             {
@@ -268,87 +283,45 @@ namespace SecretJenga.Game
             return av;
         }
 
-        /// <summary>Ashtray with a lit cigarette resting on it, plus a smoke emitter (used by the smoke gesture).</summary>
+        /// <summary>A little cup with a lollipop standing in it (used by the lollipop gesture - network name "Smoke").</summary>
         void BuildSmokingKit(Avatar av, Transform parent)
         {
             if (_cigMesh == null)
             {
-                _cigMesh = ProceduralMeshes.Cylinder(0.085f, 1.7f, 10, "TLB_Cigarette");
-                _emberMesh = ProceduralMeshes.Cylinder(0.092f, 0.14f, 10, "TLB_Ember");
+                // the stick runs along Y; the candy sits at the -Y end (the end that goes to the lips)
+                _cigMesh = ProceduralMeshes.Cylinder(0.08f, 2.8f, 8, "TLB_LollipopStick");
+                _emberMesh = ProceduralMeshes.Combine("TLB_LollipopCandy",
+                    (ProceduralMeshes.Cylinder(0.75f, 0.32f, 20, "c"), Matrix4x4.TRS(new Vector3(0f, -1.85f, 0f), Quaternion.Euler(90f, 0f, 0f), Vector3.one)));
                 _ashtrayMesh = ProceduralMeshes.Lathe(new[]
                 {
-                    new Vector2(0f, 0f), new Vector2(1.15f, 0f), new Vector2(1.25f, 0.12f), new Vector2(1.2f, 0.42f), new Vector2(1.0f, 0.45f),
-                    new Vector2(0.92f, 0.2f), new Vector2(0f, 0.2f)
-                }, 24, false, false, "TLB_Ashtray");
-                _cigMat = RuntimeArt.MakeLit(new Color(0.93f, 0.9f, 0.84f), 0.2f);
-                _emberMat = RuntimeArt.MakeLit(new Color(0.25f, 0.08f, 0.04f), 0.3f);
-                RuntimeArt.EnableEmission(_emberMat);
-                _emberMat.SetColor("_EmissionColor", new Color(1f, 0.35f, 0.08f) * 1.5f);
-                _ashtrayMat = RuntimeArt.MakeLit(new Color(0.42f, 0.3f, 0.16f), 0.7f);
-                _ashtrayMat.SetFloat("_Metallic", 0.8f);
-                var dust = SecretJengaAssets.Instance.dustMaterial;
-                _smokeMat = dust != null ? new Material(dust) : RuntimeArt.MakeGhost(new Color(0.8f, 0.8f, 0.8f, 0.4f));
-                if (_smokeMat.HasProperty("_BaseColor")) _smokeMat.SetColor("_BaseColor", new Color(0.82f, 0.8f, 0.78f, 0.5f));
+                    new Vector2(0f, 0f), new Vector2(0.75f, 0f), new Vector2(0.85f, 0.1f), new Vector2(0.95f, 1.6f), new Vector2(0.85f, 1.65f),
+                    new Vector2(0.75f, 0.25f), new Vector2(0f, 0.25f)
+                }, 20, false, false, "TLB_CandyCup");
+                _cigMat = RuntimeArt.MakeLit(new Color(0.97f, 0.96f, 0.93f), 0.3f);
+                _emberMat = RuntimeArt.MakeLit(new Color(0.95f, 0.3f, 0.45f), 0.85f);
+                _ashtrayMat = RuntimeArt.MakeLit(new Color(0.35f, 0.7f, 0.95f), 0.7f);
             }
             if (_mpb == null) _mpb = new MaterialPropertyBlock();
 
-            var tray = new GameObject("Ashtray").transform;
-            tray.SetParent(parent, false);
-            tray.gameObject.AddComponent<MeshFilter>().sharedMesh = _ashtrayMesh;
-            tray.gameObject.AddComponent<MeshRenderer>().sharedMaterial = _ashtrayMat;
-            av.Ashtray = tray;
+            var cup = new GameObject("CandyCup").transform;
+            cup.SetParent(parent, false);
+            cup.gameObject.AddComponent<MeshFilter>().sharedMesh = _ashtrayMesh;
+            cup.gameObject.AddComponent<MeshRenderer>().sharedMaterial = _ashtrayMat;
+            av.Ashtray = cup;
 
-            var cig = new GameObject("Cigarette").transform;
-            cig.SetParent(parent, false);
-            var body = new GameObject("Paper");
-            body.transform.SetParent(cig, false);
-            body.AddComponent<MeshFilter>().sharedMesh = _cigMesh;
-            body.AddComponent<MeshRenderer>().sharedMaterial = _cigMat;
-            var ember = new GameObject("Ember");
-            ember.transform.SetParent(cig, false);
-            ember.transform.localPosition = new Vector3(0f, 0.9f, 0f);   // the lit end is +Y, the filter -Y
-            ember.AddComponent<MeshFilter>().sharedMesh = _emberMesh;
-            av.CigEmber = ember.AddComponent<MeshRenderer>();
-            av.CigEmber.sharedMaterial = _emberMat;
-            av.Cig = cig;
-
-            var smokeGo = new GameObject("Smoke");
-            smokeGo.transform.SetParent(parent, false);
-            var ps = smokeGo.AddComponent<ParticleSystem>();
-            ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
-            var main = ps.main;
-            main.playOnAwake = false;
-            main.loop = true;
-            main.simulationSpace = ParticleSystemSimulationSpace.World;
-            main.startLifetime = new ParticleSystem.MinMaxCurve(2.2f, 3.4f);
-            main.startSpeed = 0f;
-            main.startSize = new ParticleSystem.MinMaxCurve(0.4f, 0.8f);
-            main.startColor = new Color(0.85f, 0.84f, 0.82f, 0.32f);
-            main.gravityModifier = -0.012f;
-            main.maxParticles = 160;
-            var em = ps.emission; em.enabled = false;
-            var shape = ps.shape; shape.enabled = false;
-            var sol = ps.sizeOverLifetime;
-            sol.enabled = true;
-            sol.size = new ParticleSystem.MinMaxCurve(1f, AnimationCurve.Linear(0f, 0.6f, 1f, 3.2f));
-            var col = ps.colorOverLifetime;
-            col.enabled = true;
-            var grad = new Gradient();
-            grad.SetKeys(new[] { new GradientColorKey(Color.white, 0f), new GradientColorKey(Color.white, 1f) },
-                         new[] { new GradientAlphaKey(0f, 0f), new GradientAlphaKey(1f, 0.12f), new GradientAlphaKey(0.5f, 0.5f), new GradientAlphaKey(0f, 1f) });
-            col.color = grad;
-            var noise = ps.noise;
-            noise.enabled = true;
-            noise.strength = 0.25f;
-            noise.frequency = 0.6f;
-            var rot = ps.rotationOverLifetime;
-            rot.enabled = true;
-            rot.z = new ParticleSystem.MinMaxCurve(-0.6f, 0.6f);
-            var pr = smokeGo.GetComponent<ParticleSystemRenderer>();
-            pr.sharedMaterial = _smokeMat;
-            pr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            ps.Play();
-            av.Smoke = ps;
+            var pop = new GameObject("Lollipop").transform;
+            pop.SetParent(parent, false);
+            var stick = new GameObject("Stick");
+            stick.transform.SetParent(pop, false);
+            stick.AddComponent<MeshFilter>().sharedMesh = _cigMesh;
+            stick.AddComponent<MeshRenderer>().sharedMaterial = _cigMat;
+            var candy = new GameObject("Candy");
+            candy.transform.SetParent(pop, false);
+            candy.AddComponent<MeshFilter>().sharedMesh = _emberMesh;
+            candy.AddComponent<MeshRenderer>().sharedMaterial = _emberMat;
+            av.Cig = pop;
+            av.CigEmber = null;   // nothing glows and nothing smokes in a kids' room
+            av.Smoke = null;
         }
 
         static void Puff(ParticleSystem ps, Vector3 at, Vector3 dir, int count, float speed, float size)
@@ -377,11 +350,11 @@ namespace SecretJenga.Game
                 _mugBeer = ProceduralMeshes.Lathe(new[] { new Vector2(0f, 0.36f), new Vector2(0.75f, 0.36f), new Vector2(0.8f, 2.35f), new Vector2(0f, 2.35f) }, 18, false, true, "TLB_MugBeer");
                 _mugFoam = ProceduralMeshes.Lathe(new[] { new Vector2(0.81f, 2.3f), new Vector2(0.84f, 2.75f), new Vector2(0.55f, 2.95f), new Vector2(0f, 3.0f) }, 18, false, false, "TLB_MugFoam");
                 _mugHandle = SaloonMeshes.Ring(0.62f, 0.14f, 16, "TLB_MugHandle");
-                _mugGlassMat = RuntimeArt.MakeLit(new Color(0.78f, 0.74f, 0.62f), 0.95f);
-                _mugBeerMat = RuntimeArt.MakeLit(new Color(0.78f, 0.45f, 0.08f), 0.85f);
-                _mugFoamMat = RuntimeArt.MakeLit(new Color(0.97f, 0.94f, 0.86f), 0.25f);
+                _mugGlassMat = RuntimeArt.MakeLit(new Color(0.85f, 0.9f, 0.95f), 0.95f);
+                _mugBeerMat = RuntimeArt.MakeLit(new Color(1f, 0.6f, 0.12f), 0.8f);      // orange juice
+                _mugFoamMat = RuntimeArt.MakeLit(new Color(1f, 0.72f, 0.3f), 0.5f);
             }
-            var mug = new GameObject("BeerMug").transform;
+            var mug = new GameObject("JuiceGlass").transform;
             mug.SetParent(parent, false);
             void Piece(string n, Mesh m, Material mat, Vector3 pos, Vector3 euler)
             {
@@ -395,7 +368,7 @@ namespace SecretJenga.Game
             Piece("Beer", _mugBeer, _mugBeerMat, Vector3.zero, Vector3.zero);
             Piece("Foam", _mugFoam, _mugFoamMat, Vector3.zero, Vector3.zero);
             Piece("Glass", _mugGlass, _mugGlassMat, Vector3.zero, Vector3.zero);
-            Piece("Handle", _mugHandle, _mugGlassMat, new Vector3(0.95f, 1.6f, 0f), new Vector3(90f, 0f, 0f));
+            Piece("Straw", ProceduralMeshes.Cylinder(0.07f, 3.4f, 6, "TLB_Straw"), _mugBeerMat, new Vector3(0.35f, 3.2f, 0f), new Vector3(0f, 0f, -12f));
             return mug;
         }
 
@@ -444,6 +417,8 @@ namespace SecretJenga.Game
             var footL = FindDeep(model, "foot_l");
             var footR = FindDeep(model, "foot_r");
             if (av.BHead == null || pelvis == null || av.BUpperL == null || av.BUpperR == null) { Destroy(go); return false; }
+            av.BThighL = FindDeep(model, "thigh_l");
+            av.BThighR = FindDeep(model, "thigh_r");
             // bind pose (before any animation): the head is level and faces the model's forward - remember how the
             // head bone sits in that frame, so later we can point the head exactly where the player looks
             var bindHead = Quaternion.Inverse(av.Root.transform.rotation) * av.BHead.rotation;
@@ -460,6 +435,7 @@ namespace SecretJenga.Game
                 av.Anim.speed = 0.9f + (h % 7) * 0.03f;
                 av.Anim.Update(0f);
             }
+            ApplyKidProportions(av);
 
             // measure the seated pose once (works whatever unit scale / axis the importer chose)
             var root = av.Root.transform;
@@ -482,31 +458,32 @@ namespace SecretJenga.Game
             av.PelvisOffset.y = 0f;
             av.Model = model;
 
-            // outfit colours: neckerchief in the player's colour, the rest varied per player
-            var shirtC = Shirts[h % Shirts.Length];
-            var hatC = Hats[(h / 7) % Hats.Length];
+            // clothes: the t-shirt in the player's colour, the rest varied per player; a cap or hair
+            var shirtC = Color.Lerp(Palette.Player(colorIndex), Color.white, 0.15f);
+            var capC = Hats[(h / 7) % Hats.Length];
             var skinC = Skins[(h / 13) % Skins.Length];
+            bool wearsCap = (h / 3) % 2 == 0;
             skin = RuntimeArt.MakeLit(skinC, 0.3f);
             cloth = RuntimeArt.MakeLit(shirtC, 0.15f);
-            var vest = RuntimeArt.MakeLit(Color.Lerp(new Color(0.18f, 0.12f, 0.08f), hatC, 0.3f), 0.35f);
-            var pants = RuntimeArt.MakeLit(new Color(0.2f, 0.21f, 0.26f), 0.1f);
-            var boots = RuntimeArt.MakeLit(new Color(0.16f, 0.09f, 0.05f), 0.55f);
-            var hat = RuntimeArt.MakeLit(hatC, 0.2f);
-            var band = RuntimeArt.MakeLit(hatC * 0.4f, 0.4f);
-            var scarf = RuntimeArt.MakeLit(Palette.Player(colorIndex), 0.15f);
+            var shorts = RuntimeArt.MakeLit(Shorts[(h / 5) % Shorts.Length], 0.12f);
+            var shoes = RuntimeArt.MakeLit(ShoeCols[(h / 11) % ShoeCols.Length], 0.5f);
+            var cap = RuntimeArt.MakeLit(capC, 0.3f);
+            var hair = RuntimeArt.MakeLit(HairCols[(h / 17) % HairCols.Length], 0.25f);
             foreach (var rend in go.GetComponentsInChildren<Renderer>(true))
             {
                 var mats = rend.sharedMaterials;
                 for (int i = 0; i < mats.Length; i++)
                 {
                     string n = mats[i] != null ? mats[i].name : "";
-                    mats[i] = n.Contains("Skin") ? skin : n.Contains("Shirt") ? cloth : n.Contains("Vest") ? vest : n.Contains("Pants") ? pants :
-                              n.Contains("Boots") ? boots : n.Contains("HatBand") ? band : n.Contains("Hat") ? hat : n.Contains("Neckerchief") ? scarf :
-                              n.Contains("Joints") ? pants : cloth;
+                    if (n.Contains("Eye") || n.Contains("Mouth") || n.Contains("Socks") || n.Contains("CapBrim")) continue;   // keep as modelled
+                    mats[i] = n.Contains("Skin") ? skin : n.Contains("Shirt") || n.Contains("Stripe") ? cloth : n.Contains("Shorts") ? shorts :
+                              n.Contains("Shoes") ? shoes : n.Contains("Cap") ? cap : n.Contains("Hair") ? hair : mats[i];
                 }
                 rend.sharedMaterials = mats;
                 rend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
                 if (rend is SkinnedMeshRenderer smr) smr.updateWhenOffscreen = true;
+                if (rend.gameObject.name.StartsWith("KidCap")) rend.gameObject.SetActive(wearsCap);
+                if (rend.gameObject.name.StartsWith("KidHair")) rend.gameObject.SetActive(!wearsCap);
             }
             return true;
         }
@@ -529,6 +506,42 @@ namespace SecretJenga.Game
             if (av.Torso == null) return;
             var hips = outward * (SeatLayout.ChairRadius + 0.4f) + Vector3.up * (SeatLayout.FloorY + 9.2f);
             av.Torso.SetPositionAndRotation(hips, SeatLayout.Facing(av.Seat) * Quaternion.Euler(8f, 0f, 0f));
+        }
+
+        /// <summary>Shorter body and legs and a big round head (the clips have no scale keys, so this sticks).</summary>
+        static void ApplyKidProportions(Avatar av)
+        {
+            if (av.BSpine != null) av.BSpine.localScale = Vector3.one * KidSpine;
+            if (av.BHead != null) av.BHead.localScale = Vector3.one * (KidHead / KidSpine);
+            if (av.BThighL != null) av.BThighL.localScale = Vector3.one * KidThigh;
+            if (av.BThighR != null) av.BThighR.localScale = Vector3.one * KidThigh;
+        }
+
+        /// <summary>The top of a player's head (their kid's head, or just above the camera for yourself) and their seat.</summary>
+        public bool TryGetHeadTop(ulong clientId, out Vector3 top, out int seat)
+        {
+            top = Vector3.zero;
+            seat = 0;
+            if (!_avatars.TryGetValue(clientId, out var av) || av.Seat < 0) return false;
+            seat = av.Seat;
+            if (av.Local && Camera.main != null) top = Camera.main.transform.position + Vector3.up * 2.4f;
+            else if (av.BHead != null) top = av.BHead.position + Vector3.up * (0.26f * av.ModelScale * KidHead);   // skull top: 26 cm over the head bone
+            else if (av.Head != null) top = av.Head.position + Vector3.up * 2.2f;
+            else top = SeatLayout.EyePosition(av.Seat) + Vector3.up * 2.4f;
+            return true;
+        }
+
+        public bool IsLocal(ulong clientId) => _avatars.TryGetValue(clientId, out var av) && av.Local;
+
+        /// <summary>0 = awake, 1 = bonked: the kid slumps forward onto the table (set by KidsRoomLife).</summary>
+        public void SetKnockedOut(ulong clientId, float amount)
+        {
+            if (_avatars.TryGetValue(clientId, out var av)) av.KO = Mathf.Clamp01(amount);
+        }
+
+        public void ClearKnockouts()
+        {
+            foreach (var av in _avatars.Values) av.KO = 0f;
         }
 
         /// <summary>
@@ -596,6 +609,7 @@ namespace SecretJenga.Game
             // the rigged body keeps its own seated arms out of the way: the HandRig arms take over from the shoulders
             if (av.Model != null)
             {
+                ApplyKidProportions(av);
                 av.BUpperL.localScale = Vector3.one * 0.0001f;
                 av.BUpperR.localScale = Vector3.one * 0.0001f;
                 // lean over the table when the hand has to reach far (the tower is in the middle of a big table)
@@ -739,6 +753,7 @@ namespace SecretJenga.Game
                 var hip = outward * (SeatLayout.ChairRadius + 2.6f);
                 float need = new Vector2(contact.x - hip.x, contact.z - hip.z).magnitude;
                 av.LeanTarget = Mathf.Clamp((need - 11f) * 4.5f, 0f, 38f);
+                if (av.KO > 0f) av.LeanTarget = Mathf.Lerp(av.LeanTarget, 62f, av.KO);
             }
             if (!fromBlock) contact = LimitHand(av.Seat, shoulderR, contact);
             av.Right.SetPose(pose);
@@ -791,10 +806,21 @@ namespace SecretJenga.Game
                             target += Vector3.up * Mathf.Abs(Mathf.Sin(e * 8f)) * 0.5f;
                             break;
                         case Gesture.MiddleFinger:
-                            leftPose = HandPoseId.MiddleFinger;
-                            gOrient = backToOthers;
-                            target += f * Mathf.Sin(Mathf.Clamp01((e - 0.3f) / 0.4f) * Mathf.PI) * 0.6f;   // a little jab
+                        {
+                            // "nyah nyah": thumb on the nose, fingers spread forward and wiggling
+                            leftPose = HandPoseId.Open;
+                            Vector3 nose;
+                            if (av.Local && Camera.main != null)
+                            {
+                                var cam = Camera.main.transform;
+                                nose = cam.position + cam.forward * 2.4f - Vector3.up * 0.5f;
+                            }
+                            else if (av.BHead != null) nose = av.BHead.position + f * 2.6f + Vector3.up * 1.2f;
+                            else nose = headPos + f * 1.8f;
+                            target = nose + f * 1.1f;
+                            gOrient = Quaternion.AngleAxis(Mathf.Sin(e * 22f) * 14f, f) * Quaternion.LookRotation((f + Vector3.up * 0.35f).normalized, rgt);
                             break;
+                        }
                         case Gesture.Wave:
                             leftPose = HandPoseId.Open;
                             gOrient = Quaternion.AngleAxis(Mathf.Sin(e * 10f) * 28f, f) * palmToOthers;
@@ -864,7 +890,7 @@ namespace SecretJenga.Game
                                 _mpb.SetColor("_EmissionColor", new Color(1f, 0.35f, 0.08f) * Mathf.Lerp(1.5f, 6f, drag * (0.75f + 0.25f * Mathf.Sin(e * 30f))));
                                 av.CigEmber.SetPropertyBlock(_mpb);
                             }
-                            if (e > 2.25f && (av.GFlags & 1) == 0)
+                            if (e > 1.1f && (av.GFlags & 1) == 0)
                             {
                                 av.GFlags |= 1;
                                 Puff(av.Smoke, mouth + f * 0.4f, (f + Vector3.up * 0.25f).normalized, 34, 1.6f, 0.7f);
@@ -898,8 +924,8 @@ namespace SecretJenga.Game
                 }
                 else
                 {
-                    // resting across the rim of the ashtray, lit end over the bowl
-                    av.Cig.SetPositionAndRotation(trayHome + Vector3.up * 0.5f + seatRight * 0.55f, Quaternion.FromToRotation(Vector3.up, -seatRight + Vector3.up * 0.12f));
+                    // standing in its cup, candy up
+                    av.Cig.SetPositionAndRotation(trayHome + Vector3.up * 1.6f, Quaternion.AngleAxis(180f, seatRight) * Quaternion.AngleAxis(8f, forward));
                     if (av.CigEmber != null && av.G != Gesture.Smoke)
                     {
                         av.CigEmber.GetPropertyBlock(_mpb);
@@ -941,6 +967,7 @@ namespace SecretJenga.Game
                 // the head looks where that player's camera looks (sent through HandSync); bots look at what matters
                 var bodyFwd = SeatLayout.Facing(av.Seat) * Vector3.forward;
                 var dir = HeadLookDir(clientId, bodyFwd, (lookAt - av.BHead.position).normalized);
+                if (av.KO > 0f) dir = Vector3.Slerp(dir, (bodyFwd * 0.25f - Vector3.up + Vector3.Cross(Vector3.up, bodyFwd) * 0.35f).normalized, av.KO);
                 if (av.LookDir.sqrMagnitude < 0.5f) av.LookDir = dir;
                 av.LookDir = Vector3.Slerp(av.LookDir, dir, 1f - Mathf.Exp(-9f * Time.deltaTime)).normalized;
                 RestoreBone(av.BHead, ref av.HeadTouched, av.HeadSet, ref av.HeadBase);
