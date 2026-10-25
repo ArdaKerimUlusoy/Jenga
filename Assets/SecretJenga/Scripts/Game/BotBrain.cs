@@ -34,6 +34,8 @@ namespace SecretJenga.Game
 
         public void Begin(ulong botId)
         {
+            // one brain serves every bot: drop the previous bot's hand, or it stays frozen mid-gesture over the table
+            Stop();
             _id = botId;
             _tried.Clear();
             _attempts = 0;

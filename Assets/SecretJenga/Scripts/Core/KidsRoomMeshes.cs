@@ -137,16 +137,27 @@ namespace SecretJenga
                 (drawer, TRS(new Vector3(7.5f, 11f, 0f), Vector3.zero)));
         }
 
+        /// <summary>Unit cylinder stretched between two points (the lathe is centred on its own origin).</summary>
+        static (Mesh, Matrix4x4) Rod(Mesh unitCylinder, Vector3 a, Vector3 b, float radius) =>
+            (unitCylinder, Matrix4x4.TRS((a + b) * 0.5f, Quaternion.FromToRotation(Vector3.up, b - a), new Vector3(radius, Vector3.Distance(a, b), radius)));
+
         public static Mesh DeskLamp()
         {
             var basePlate = ProceduralMeshes.Lathe(new[] { new Vector2(0f, 0f), new Vector2(2.2f, 0f), new Vector2(2.2f, 0.4f), new Vector2(1.4f, 0.8f), new Vector2(0f, 0.8f) }, 20, false, false, "b");
-            var arm = ProceduralMeshes.Cylinder(0.25f, 7f, 8, "a");
+            var rod = ProceduralMeshes.Cylinder(1f, 1f, 10, "a");
+            var hinge = Ball(1f, 8, 12);
             var shade = ProceduralMeshes.Lathe(new[] { new Vector2(2.4f, -1.8f), new Vector2(2.2f, -1.6f), new Vector2(1.0f, 0f), new Vector2(0.6f, 0.4f), new Vector2(0f, 0.45f) }, 20, false, true, "s");
+            Vector3 foot = new Vector3(0.3f, 0.8f, 0f), elbow = new Vector3(1.8f, 7.8f, 0f), head = new Vector3(5.6f, 10.2f, 0f);
+            const float shadeTilt = 35f;
+            var shadeAxis = Quaternion.Euler(0f, 0f, shadeTilt) * Vector3.down;
             return ProceduralMeshes.Combine("KR_DeskLamp",
                 (basePlate, Matrix4x4.identity),
-                (arm, TRS(new Vector3(0.6f, 3.9f, 0f), new Vector3(0f, 0f, -12f))),
-                (arm, TRS(new Vector3(2.4f, 9.6f, 0f), new Vector3(0f, 0f, 48f))),
-                (shade, TRS(new Vector3(5.4f, 11.2f, 0f), new Vector3(0f, 0f, 35f))));
+                Rod(rod, foot, elbow, 0.25f),
+                Rod(rod, elbow, head, 0.25f),
+                (hinge, TRS(foot, Vector3.zero, Vector3.one * 0.42f)),
+                (hinge, TRS(elbow, Vector3.zero, Vector3.one * 0.42f)),
+                (hinge, TRS(head, Vector3.zero, Vector3.one * 0.42f)),
+                (shade, TRS(head + shadeAxis * 0.35f, new Vector3(0f, 0f, shadeTilt))));
         }
 
         // ------------------------------------------------------------------ paper lantern (ribbed, pivot at the top)

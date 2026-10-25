@@ -36,16 +36,12 @@ def noise(h, w, s=1.0, seed=0):
 
 
 # ------------------------------------------------------------------ notebook paper (9-sliced, border 56)
+# Plain sheet only: the ruled lines, margin and punch holes are drawn by UIFactory.PaperSheet at a fixed pitch,
+# because a 9-slice stretches anything inside its centre and the lines would drift over the text.
 w = h = 512
 p = np.ones((h, w, 3), np.float32) * np.array([0.995, 0.99, 0.975])
 p *= (0.975 + 0.03 * noise(h, w, 2, 1))[..., None]
 img = Image.fromarray((p * 255).astype(np.uint8)).convert("RGBA")
-d = ImageDraw.Draw(img)
-for y in range(70, h - 30, 26):
-    d.line([(20, y), (w - 20, y)], fill=(150, 190, 235, 255), width=2)
-d.line([(78, 14), (78, h - 14)], fill=(240, 120, 120, 255), width=2)
-for y in (110, 256, 402):
-    d.ellipse([28, y - 11, 50, y + 11], fill=(205, 205, 212, 255))
 a = rounded_mask(w, h, 22)
 arr = np.asarray(img, np.float32) / 255
 arr[..., 3] = a

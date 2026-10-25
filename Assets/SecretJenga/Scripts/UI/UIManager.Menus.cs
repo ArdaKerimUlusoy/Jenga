@@ -26,8 +26,8 @@ namespace SecretJenga.UI
         /// <summary>A taped sheet in the middle of the screen; returns its content column.</summary>
         RectTransform CenterCard(CanvasGroup screen, string name, Vector2 size, Vector2 offset = default)
         {
-            float tilt = ((name.GetHashCode() & 0xff) / 255f - 0.5f) * 2.4f;
-            var sheet = UIFactory.PaperSheet(screen.transform, "Sheet" + name, new Vector2(0.5f, 0.5f), offset, size, tilt, 2, 64);
+            // text-heavy sheets stay level: a rotated uGUI Text resamples every glyph and reads blurry
+            var sheet = UIFactory.PaperSheet(screen.transform, "Sheet" + name, new Vector2(0.5f, 0.5f), offset, size, 0f, 2, 64);
             return sheet.Body;
         }
 

@@ -194,7 +194,8 @@ namespace SecretJenga.Game
             if (!IsSpawned || !IsServer) return;
             ServerBotGestures();
             _broadcastTimer -= Time.deltaTime;
-            if (_broadcastTimer > 0f || _server.Count == 0) return;
+            // an empty list is still sent: it is how clients learn that the last published hand went away
+            if (_broadcastTimer > 0f) return;
             _broadcastTimer = SendInterval;
             // forget players that left
             var game = NetworkGameManager.Instance;

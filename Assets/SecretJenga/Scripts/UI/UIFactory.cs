@@ -246,6 +246,7 @@ namespace SecretJenga.UI
             Stretch(paper.rectTransform);
             s.Paper = paper.rectTransform;
             s.PaperImage = paper;
+            if (!slip) Notebook(s.Root, size, pad);
 
             if (A.tape != null)
             {
@@ -265,6 +266,56 @@ namespace SecretJenga.UI
             VLayout(s.Body, 12, 0, TextAnchor.UpperLeft);
             OnPaper = true;
             return s;
+        }
+
+        const int RulePitch = 40;
+        static Sprite _rule;
+
+        /// <summary>One faint ruled line per tile; a tiled Image keeps the same pitch on every sheet size.</summary>
+        static Sprite RuleSprite
+        {
+            get
+            {
+                if (_rule != null) return _rule;
+                var t = new Texture2D(4, RulePitch, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Repeat, name = "TLB_UIRule" };
+                var px = new Color[4 * RulePitch];
+                for (int x = 0; x < 4; x++) { px[x] = Color.white; px[4 + x] = new Color(1f, 1f, 1f, 0.5f); }
+                t.SetPixels(px);
+                t.Apply();
+                _rule = Sprite.Create(t, new Rect(0, 0, 4, RulePitch), new Vector2(0.5f, 0.5f), 100f, 0, SpriteMeshType.FullRect);
+                return _rule;
+            }
+        }
+
+        /// <summary>
+        /// Ruled lines, the red margin and punch holes at a fixed size. The margin sits in the left padding so it
+        /// never runs through the text column.
+        /// </summary>
+        static void Notebook(RectTransform root, Vector2 size, int pad)
+        {
+            float top = pad + 24f;
+            float rows = Mathf.Floor((size.y - top - 26f) / RulePitch);
+            if (rows > 0)
+            {
+                var rules = Image(root, "Rules", RuleSprite, new Color(0.59f, 0.75f, 0.92f, 0.42f), false);
+                rules.type = UnityEngine.UI.Image.Type.Tiled;
+                Place(rules.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -top), new Vector2(size.x - 28f, rows * RulePitch));
+            }
+
+            float marginX = pad - 16f;
+            var margin = Image(root, "Margin", null, new Color(0.94f, 0.47f, 0.47f, 0.5f), false);
+            margin.rectTransform.anchorMin = new Vector2(0f, 0f);
+            margin.rectTransform.anchorMax = new Vector2(0f, 1f);
+            margin.rectTransform.pivot = new Vector2(0.5f, 0.5f);
+            margin.rectTransform.sizeDelta = new Vector2(2f, -28f);
+            margin.rectTransform.anchoredPosition = new Vector2(marginX, 0f);
+
+            float holeD = Mathf.Min(20f, pad * 0.3f);
+            foreach (var k in new[] { 0.2f, 0.5f, 0.8f })
+            {
+                var hole = Image(root, "Hole", CircleSprite, new Color(0.8f, 0.8f, 0.84f, 1f), false);
+                Place(hole.rectTransform, new Vector2(0f, k), new Vector2(0.5f, 0.5f), new Vector2(Mathf.Max(holeD * 0.5f + 6f, marginX * 0.45f), 0f), new Vector2(holeD, holeD));
+            }
         }
 
         // ------------------------------------------------------------------ Buttons: words you click

@@ -662,6 +662,22 @@ namespace SecretJenga.Game
             float wobble = game.Stability.Wobble.Value;
             Vector3 lookAt = new Vector3(0f, game.Tower.LayerCount.Value * JengaDims.BlockHeight * 0.5f, 0f);
 
+            // free hands go round the tower instead of through it (one layer of headroom for the block being placed)
+            if (playing)
+            {
+                float top = (game.Tower.LayerCount.Value + 1) * JengaDims.BlockHeight;
+                float halfWidth = JengaDims.BlockLength * 0.5f + 0.05f;
+                var center = JengaTower.BaseCenter + Vector3.up * (top * 0.5f);
+                var half = new Vector3(halfWidth, top * 0.5f, halfWidth);
+                av.Right.SetObstacle(center, half);
+                av.Left.SetObstacle(center, half);
+            }
+            else
+            {
+                av.Right.ClearObstacle();
+                av.Left.ClearObstacle();
+            }
+
             // ---------------- right hand
             HandPoseId pose = HandPoseId.Flat;
             Vector3 contact = RestPoint(av.Seat, 1f, right);

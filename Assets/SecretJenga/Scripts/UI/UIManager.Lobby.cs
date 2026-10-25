@@ -79,8 +79,8 @@ namespace SecretJenga.UI
             _lobbyCode.horizontalOverflow = HorizontalWrapMode.Overflow;
             UIFactory.LE(_lobbyCode, 62);
             UIFactory.Button(codeRow, L.T("copy", "kopyala"), CopyCode, ButtonStyle.Secondary, 28);
-            _lobbyAddresses = UIFactory.Write(right, FontKind.Body, "", 20, Ink.Faded, TextAnchor.UpperLeft, FontStyle.Italic);
-            UIFactory.LE(_lobbyAddresses, 46);
+            _lobbyAddresses = UIFactory.Write(right, FontKind.Body, "", 22, Ink.Faded, TextAnchor.UpperLeft);
+            UIFactory.LE(_lobbyAddresses, 54);
             UIFactory.Divider(right);
 
             var hs = UIFactory.Rect("HostSettings", right);
@@ -91,8 +91,9 @@ namespace SecretJenga.UI
             _lTurn = UIFactory.Stepper(hs, L.T("Time for each turn", "Tur başına süre"), 0, GameRules.MaxTurnSeconds, GameRules.DefaultTurnSeconds, 20, FormatTimer, _ => PushSettings());
             UIFactory.Divider(right);
 
-            _lobbyRules = UIFactory.Write(right, FontKind.Body, "", 20, Ink.Black, TextAnchor.UpperLeft);
-            UIFactory.LE(_lobbyRules, 132);
+            _lobbyRules = UIFactory.Write(right, FontKind.Body, "", 23, Ink.Black, TextAnchor.UpperLeft);
+            _lobbyRules.lineSpacing = 1.1f;
+            UIFactory.LE(_lobbyRules, 150);
 
             UIFactory.LE(UIFactory.Rect("Push", right), -1, -1, -1, 1);
             _lobbyStatus = UIFactory.Write(right, FontKind.Type, "", 21, Ink.Red, TextAnchor.MiddleLeft);
@@ -129,9 +130,9 @@ namespace SecretJenga.UI
             UIFactory.LE(nameCol, 76, -1, 1);
             UIFactory.VLayout(nameCol, 0, 0, TextAnchor.MiddleLeft);
             s.Name = UIFactory.Write(nameCol, FontKind.Body, "", 34, Ink.Black, TextAnchor.MiddleLeft);
-            UIFactory.LE(s.Name, 42);
-            s.Tags = UIFactory.Write(nameCol, FontKind.Type, "", 18, Ink.Faded, TextAnchor.MiddleLeft);
-            UIFactory.LE(s.Tags, 24);
+            UIFactory.LE(s.Name, 40);
+            s.Tags = UIFactory.Write(nameCol, FontKind.Type, "", 20, Ink.Faded, TextAnchor.MiddleLeft);
+            UIFactory.LE(s.Tags, 28);
             s.Status = UIFactory.Write(filled, FontKind.Type, "", 22, Ink.Black, TextAnchor.MiddleRight);
             UIFactory.LE(s.Status, 40, 150);
             s.Strike = UIFactory.Image(filled, "Strike", UIFactory.StrokeSprite, Ink.Red, false);

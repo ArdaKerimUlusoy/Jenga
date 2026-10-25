@@ -37,6 +37,8 @@ namespace SecretJenga
         public Material skinMaterial;
         public Material clothMaterial;
         public Material hoodMaterial;
+        [Tooltip("Skinned right hand + forearm (Tools~/blender_build_hands.py). Optional - falls back to the procedural hand.")]
+        public Mesh handMesh;
 
         [Header("UI sprites")]
         public Sprite panel;

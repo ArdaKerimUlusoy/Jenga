@@ -92,6 +92,7 @@ namespace SecretJenga.EditorTools
                 Step("Tasks and cards", 0.64f); CreateContent(ctx);
                 Step("Asset registry", 0.68f); CreateRegistry(ctx);
                 Step("Post processing", 0.74f); CreateVolumeProfile(ctx);
+                Step("Adaptive Probe Volumes", 0.78f); EnableProbeVolumes();
                 Step("Scene", 0.82f); CreateScene(ctx);
                 Step("Project settings", 0.94f); ConfigureProjectSettings();
                 AssetDatabase.SaveAssets();
@@ -440,6 +441,7 @@ namespace SecretJenga.EditorTools
         // ------------------------------------------------------------------ Meshes
         static Mesh SaveMesh(Ctx ctx, Mesh mesh, string name)
         {
+            AddLightmapUVs(mesh);
             var path = Models + "/" + name + ".asset";
             var existing = AssetDatabase.LoadAssetAtPath<Mesh>(path);
             if (existing != null)
@@ -457,6 +459,99 @@ namespace SecretJenga.EditorTools
             }
             ctx.Mesh[name] = mesh;
             return mesh;
+        }
+
+        [Serializable]
+        class HandJson
+        {
+            public string[] bones;
+            public float[] positions, normals, uvs, boneWeights;
+            public int[] boneIndices, triangles, clothTriangles;
+        }
+
+        /// <summary>
+        /// The skinned hand exported by Tools~/blender_build_hands.py, written straight into Models/TLB_Hand.asset
+        /// (CopySerialized dropped the vertex buffer of this skinned mesh). Bone indices follow HandRig's bone order;
+        /// the identity bind poses are placeholders that HandRig replaces from its own joints at runtime.
+        /// </summary>
+        static Mesh SaveHandMesh(Ctx ctx)
+        {
+            var path = CharDir + "/TLB_Hand.json";
+            if (!File.Exists(path))
+            {
+                Debug.LogWarning("[TheLastBlock] " + path + " not found (run Tools~/blender_build_hands.py in Blender). The hands stay procedural.");
+                return null;
+            }
+            var j = JsonUtility.FromJson<HandJson>(File.ReadAllText(path));
+            int n = j.positions.Length / 3;
+            var pos = new Vector3[n];
+            var nrm = new Vector3[n];
+            var uv = new Vector2[n];
+            var bw = new BoneWeight[n];
+            for (int i = 0; i < n; i++)
+            {
+                pos[i] = new Vector3(j.positions[i * 3], j.positions[i * 3 + 1], j.positions[i * 3 + 2]);
+                nrm[i] = new Vector3(j.normals[i * 3], j.normals[i * 3 + 1], j.normals[i * 3 + 2]);
+                uv[i] = new Vector2(j.uvs[i * 2], j.uvs[i * 2 + 1]);
+                int k = i * 4;
+                bw[i] = new BoneWeight
+                {
+                    boneIndex0 = j.boneIndices[k], weight0 = j.boneWeights[k],
+                    boneIndex1 = j.boneIndices[k + 1], weight1 = j.boneWeights[k + 1],
+                    boneIndex2 = j.boneIndices[k + 2], weight2 = j.boneWeights[k + 2],
+                    boneIndex3 = j.boneIndices[k + 3], weight3 = j.boneWeights[k + 3],
+                };
+            }
+            const string assetPath = Models + "/TLB_Hand.asset";
+            var m = AssetDatabase.LoadAssetAtPath<Mesh>(assetPath);
+            bool fresh = m == null;
+            if (fresh) m = new Mesh();
+            m.Clear();
+            m.name = "TLB_Hand";
+            m.vertices = pos;
+            m.normals = nrm;
+            m.uv = uv;
+            m.boneWeights = bw;
+            var bind = new Matrix4x4[j.bones.Length];
+            for (int i = 0; i < bind.Length; i++) bind[i] = Matrix4x4.identity;
+            m.bindposes = bind;
+            bool sleeve = j.clothTriangles != null && j.clothTriangles.Length > 0;
+            m.subMeshCount = sleeve ? 2 : 1;
+            m.SetTriangles(j.triangles, 0);
+            if (sleeve) m.SetTriangles(j.clothTriangles, 1);
+            m.RecalculateBounds();
+            m.RecalculateTangents();
+            if (fresh) AssetDatabase.CreateAsset(m, assetPath);
+            else EditorUtility.SetDirty(m);
+            ctx.Mesh["TLB_Hand"] = m;
+            Debug.Log($"[TheLastBlock] Hand mesh saved: {m.vertexCount} vertices, {m.subMeshCount} submesh(es).");
+            return m;
+        }
+
+        /// <summary>
+        /// Every static mesh needs lightmap UVs even though it is lit by probes: the baker rasterises albedo and
+        /// emission through them, and falling back to the tiled UV0 (far outside 0..1) crashes its atlas packing.
+        /// </summary>
+        static bool AddLightmapUVs(Mesh mesh)
+        {
+            if (mesh == null || mesh.vertexCount == 0 || mesh.boneWeights.Length > 0 || mesh.uv2.Length == mesh.vertexCount) return false;
+            Unwrapping.GenerateSecondaryUVSet(mesh);
+            return true;
+        }
+
+        static void AddLightmapUVsToModels()
+        {
+            int added = 0;
+            foreach (var guid in AssetDatabase.FindAssets("t:Mesh", new[] { Models }))
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                if (!path.EndsWith(".asset")) continue;
+                var mesh = AssetDatabase.LoadAssetAtPath<Mesh>(path);
+                if (!AddLightmapUVs(mesh)) continue;
+                EditorUtility.SetDirty(mesh);
+                added++;
+            }
+            if (added > 0) Debug.Log($"[TheLastBlock] Added lightmap UVs to {added} room mesh(es).");
         }
 
         const float RoomHalf = 50f;     // the bedroom is 5 m across
@@ -550,6 +645,7 @@ namespace SecretJenga.EditorTools
             SaveMesh(ctx, KidsRoomMeshes.ChestLid(), "KR_ChestLid");
             SaveMesh(ctx, KidsRoomMeshes.Desk(), "KR_Desk");
             SaveMesh(ctx, KidsRoomMeshes.DeskLamp(), "KR_DeskLamp");
+            SaveHandMesh(ctx);
             SaveMesh(ctx, ProceduralMeshes.Cylinder(0.28f, 3.4f, 6, "KR_Crayon"), "KR_Crayon");
             SaveMesh(ctx, SaloonMeshes.Quad(8f, 6f, "KR_DeskPaper"), "KR_DeskPaper");
             SaveMesh(ctx, KidsRoomMeshes.PaperLantern(5.2f), "KR_PaperLantern");
@@ -651,6 +747,8 @@ namespace SecretJenga.EditorTools
             var mr = go.AddComponent<MeshRenderer>();
             mr.sharedMaterial = mat;
             mr.shadowCastingMode = castShadows ? ShadowCastingMode.On : ShadowCastingMode.Off;
+            // lit by the Adaptive Probe Volume; the procedural meshes have no lightmap UVs
+            mr.receiveGI = ReceiveGI.LightProbes;
             go.isStatic = true;
             return go;
         }
@@ -1042,6 +1140,7 @@ namespace SecretJenga.EditorTools
             r.dustMaterial = ctx.M["M_Dust"];
             r.skinMaterial = ctx.M["M_Skin"];
             r.clothMaterial = ctx.M["M_Cloth"];
+            r.handMesh = ctx.Mesh.TryGetValue("TLB_Hand", out var handMesh) ? handMesh : null;
             r.hoodMaterial = ctx.M["M_Hood"];
             r.cowboyModel = ctx.CowboyModel;
             r.cowboyAnimator = ctx.CowboyController;
@@ -1161,7 +1260,12 @@ namespace SecretJenga.EditorTools
             RenderSettings.fogDensity = 0.0025f;
             RenderSettings.fogColor = new Color(0.16f, 0.15f, 0.22f);
             RenderSettings.skybox = null;
-            var lighting = new LightingSettings { name = "TLB_Lighting", bakedGI = false, realtimeGI = false };
+            // every light is baked into an Adaptive Probe Volume; nothing is lit in real time
+            var lighting = new LightingSettings
+            {
+                name = "TLB_Lighting", bakedGI = true, realtimeGI = false, lightmapper = LightingSettings.Lightmapper.ProgressiveGPU,
+                directionalityMode = LightmapsMode.NonDirectional, lightmapResolution = 2f, maxBounces = 3,
+            };
             var lightingPath = Scenes + "/TLB_Lighting.lighting";
             if (AssetDatabase.LoadAssetAtPath<LightingSettings>(lightingPath) != null) AssetDatabase.DeleteAsset(lightingPath);
             if (AssetDatabase.LoadAssetAtPath<LightingSettings>(Scenes + "/SJ_Lighting.lighting") != null) AssetDatabase.DeleteAsset(Scenes + "/SJ_Lighting.lighting");
@@ -1308,12 +1412,184 @@ namespace SecretJenga.EditorTools
             es.AddComponent<EventSystem>();
             es.AddComponent<InputSystemUIInputModule>();
 
+            UseProbeLighting();
+
             EditorSceneManager.SaveScene(scene, ScenePath);
+            CreateProbeBakingSet();
 
             var list = new List<EditorBuildSettingsScene> { new EditorBuildSettingsScene(ScenePath, true) };
             foreach (var s in EditorBuildSettings.scenes)
                 if (s.path != ScenePath && s.path != OldScenePath) list.Add(new EditorBuildSettingsScene(s.path, false));
             EditorBuildSettings.scenes = list.ToArray();
+        }
+
+        /// <summary>Open scene: every light baked, static renderers lit by probes, one global probe volume.</summary>
+        static void UseProbeLighting()
+        {
+            foreach (var l in Object.FindObjectsByType<Light>(FindObjectsSortMode.None))
+            {
+                l.lightmapBakeType = LightmapBakeType.Baked;
+                l.shadows = LightShadows.Soft;
+                EditorUtility.SetDirty(l);
+            }
+            foreach (var mr in Object.FindObjectsByType<MeshRenderer>(FindObjectsSortMode.None))
+            {
+                if (!GameObjectUtility.AreStaticEditorFlagsSet(mr.gameObject, StaticEditorFlags.ContributeGI)) continue;
+                mr.receiveGI = ReceiveGI.LightProbes;
+                EditorUtility.SetDirty(mr);
+            }
+            if (Object.FindAnyObjectByType<ProbeVolume>() == null)
+                new GameObject("Adaptive Probe Volume").AddComponent<ProbeVolume>().mode = ProbeVolume.Mode.Global;
+
+            if (!Lightmapping.TryGetLightingSettings(out var lighting))
+            {
+                lighting = new LightingSettings { name = "TLB_Lighting" };
+                AssetDatabase.CreateAsset(lighting, Scenes + "/TLB_Lighting.lighting");
+                Lightmapping.lightingSettings = lighting;
+            }
+            lighting.bakedGI = true;
+            lighting.realtimeGI = false;
+            lighting.lightmapper = LightingSettings.Lightmapper.ProgressiveGPU;
+            lighting.directionalityMode = LightmapsMode.NonDirectional;
+            lighting.lightmapResolution = 2f;
+            lighting.maxBounces = 3;
+            EditorUtility.SetDirty(lighting);
+        }
+
+        /// <summary>
+        /// Applies the desk lamp, the skinned hands and the baked APV lighting to the existing project without
+        /// regenerating everything else. Opens the game scene, saves it and starts the bake.
+        /// </summary>
+        [MenuItem("Tools/The Last Block/Apply Hands, Lamp and Probe Lighting", priority = 2)]
+        public static void ApplyHandsLampLighting()
+        {
+            if (EditorApplication.isPlayingOrWillChangePlaymode)
+            {
+                Debug.LogWarning("[TheLastBlock] Leave Play Mode, then run Tools > The Last Block > Apply Hands, Lamp and Probe Lighting.");
+                return;
+            }
+            if (!File.Exists(ScenePath)) { Generate(); return; }
+
+            var ctx = new Ctx();
+            SaveMesh(ctx, KidsRoomMeshes.DeskLamp(), "KR_DeskLamp");
+            var hand = SaveHandMesh(ctx);
+            var registry = AssetDatabase.LoadAssetAtPath<SecretJengaAssets>(Res + "/SecretJengaAssets.asset");
+            if (hand != null && registry != null)
+            {
+                registry.handMesh = hand;
+                EditorUtility.SetDirty(registry);
+            }
+            AddLightmapUVsToModels();
+            EnableProbeVolumes();
+            AssetDatabase.SaveAssets();
+
+            var scene = SceneManager.GetActiveScene();
+            if (scene.path != ScenePath)
+            {
+                if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
+                scene = EditorSceneManager.OpenScene(ScenePath);
+            }
+            UseProbeLighting();
+            EditorSceneManager.MarkSceneDirty(scene);
+            EditorSceneManager.SaveScene(scene);
+            CreateProbeBakingSet();
+            AssetDatabase.SaveAssets();
+            Debug.Log("[TheLastBlock] Applied the desk lamp, skinned hands and probe lighting. Bake with Tools > The Last Block > Bake Probe Lighting.");
+        }
+
+        /// <summary>
+        /// Bakes the game scene's Adaptive Probe Volume. Never started automatically: a bake that still finds
+        /// lightmapped renderers without lightmap UVs crashes the editor inside Unity's lightmap atlas packing.
+        /// </summary>
+        [MenuItem("Tools/The Last Block/Bake Probe Lighting", priority = 3)]
+        public static void BakeProbeLighting()
+        {
+            if (!OpenGameSceneForBake()) return;
+            Lightmapping.bakeCompleted -= SaveAfterBake;
+            Lightmapping.bakeCompleted += SaveAfterBake;
+            Lightmapping.BakeAsync();
+        }
+
+        /// <summary>The bake adds the probe volume's per-scene data object; without saving it the game loads no probes.</summary>
+        static void SaveAfterBake()
+        {
+            Lightmapping.bakeCompleted -= SaveAfterBake;
+            EditorSceneManager.SaveOpenScenes();
+            AssetDatabase.SaveAssets();
+        }
+
+        /// <summary>Batch mode entry (-executeMethod), used to test a bake on a copy of the project.</summary>
+        public static void BakeProbeLightingBatch()
+        {
+            bool ok = OpenGameSceneForBake() && Lightmapping.Bake();
+            if (ok) SaveAfterBake();
+            Debug.Log("[TheLastBlock] Batch probe bake " + (ok ? "succeeded" : "failed"));
+            EditorApplication.Exit(ok ? 0 : 1);
+        }
+
+        /// <summary>Batch mode: rebuilds only Models/TLB_Hand.asset from TLB_Hand.json.</summary>
+        public static void SaveHandMeshBatch()
+        {
+            var hand = SaveHandMesh(new Ctx());
+            var registry = AssetDatabase.LoadAssetAtPath<SecretJengaAssets>(Res + "/SecretJengaAssets.asset");
+            if (hand != null && registry != null) { registry.handMesh = hand; EditorUtility.SetDirty(registry); }
+            AssetDatabase.SaveAssets();
+            EditorApplication.Exit(hand != null && hand.vertexCount > 0 ? 0 : 1);
+        }
+
+        /// <summary>Batch mode: the whole apply step followed by a bake (tested on a copy of the project).</summary>
+        public static void ApplyAndBakeBatch()
+        {
+            ApplyHandsLampLighting();
+            BakeProbeLightingBatch();
+        }
+
+        static bool OpenGameSceneForBake()
+        {
+            if (EditorApplication.isPlayingOrWillChangePlaymode) return false;
+            if (SceneManager.GetActiveScene().path != ScenePath)
+            {
+                if (!Application.isBatchMode && !EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return false;
+                EditorSceneManager.OpenScene(ScenePath);
+            }
+            int lightmapped = 0;
+            foreach (var mr in Object.FindObjectsByType<MeshRenderer>(FindObjectsSortMode.None))
+                if (mr.receiveGI == ReceiveGI.Lightmaps && GameObjectUtility.AreStaticEditorFlagsSet(mr.gameObject, StaticEditorFlags.ContributeGI)) lightmapped++;
+            if (lightmapped > 0)
+            {
+                Debug.LogError($"[TheLastBlock] {lightmapped} static renderer(s) still use lightmaps; run Apply Hands, Lamp and Probe Lighting first. Bake skipped.");
+                return false;
+            }
+            return true;
+        }
+
+        /// <summary>A single-scene APV baking set; probes every 10 cm near geometry (2 units), coarser in open air.</summary>
+        static void CreateProbeBakingSet()
+        {
+            var path = Scenes + "/TLB_ProbeBakingSet.asset";
+            if (AssetDatabase.LoadAssetAtPath<ProbeVolumeBakingSet>(path) != null) AssetDatabase.DeleteAsset(path);
+            var set = ScriptableObject.CreateInstance<ProbeVolumeBakingSet>();
+            // SetDefaults is internal, but a set without its default lighting scenario refuses to bake
+            typeof(ProbeVolumeBakingSet).GetMethod("SetDefaults", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)?.Invoke(set, null);
+            set.minDistanceBetweenProbes = 2f;
+            set.simplificationLevels = 3;
+            if (!set.TryAddScene(AssetDatabase.AssetPathToGUID(ScenePath)))
+                Debug.LogWarning("[TheLastBlock] The scene already belongs to another APV baking set; that set is used instead.");
+            AssetDatabase.CreateAsset(set, path);
+        }
+
+        /// <summary>Switches every URP asset in use to Adaptive Probe Volumes.</summary>
+        static void EnableProbeVolumes()
+        {
+            var assets = new HashSet<RenderPipelineAsset> { GraphicsSettings.defaultRenderPipeline };
+            for (int i = 0; i < QualitySettings.count; i++) assets.Add(QualitySettings.GetRenderPipelineAssetAt(i));
+            foreach (var a in assets)
+            {
+                if (!(a is UniversalRenderPipelineAsset)) continue;
+                var so = new SerializedObject(a);
+                SetProp(so, "m_LightProbeSystem", p => p.intValue = (int)UnityEngine.Rendering.Universal.LightProbeSystem.ProbeVolumes);
+                so.ApplyModifiedPropertiesWithoutUndo();
+            }
         }
 
         // ------------------------------------------------------------------ Player settings
@@ -1334,6 +1610,28 @@ namespace SecretJenga.EditorTools
         {
             if (!File.Exists(ScenePath)) { EditorUtility.DisplayDialog("The Last Block", "Scene not generated yet. Run Tools > The Last Block > Generate Project.", "OK"); return; }
             if (EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) EditorSceneManager.OpenScene(ScenePath);
+        }
+    }
+
+    /// <summary>
+    /// Runs Apply Hands, Lamp and Probe Lighting once after the next script reload when Library/TLB_ApplyPending
+    /// exists (dropped there by tooling outside the editor). Claiming the marker with a move makes it run only once.
+    /// </summary>
+    [InitializeOnLoad]
+    static class PendingApply
+    {
+        const string Marker = "Library/TLB_ApplyPending";
+
+        static PendingApply() => EditorApplication.delayCall += Run;
+
+        static void Run()
+        {
+            if (EditorApplication.isPlayingOrWillChangePlaymode || EditorApplication.isCompiling) return;
+            var claimed = Marker + ".running";
+            try { File.Move(Marker, claimed); }
+            catch (IOException) { return; }
+            try { SecretJengaProjectGenerator.ApplyHandsLampLighting(); }
+            finally { File.Delete(claimed); }
         }
     }
 }

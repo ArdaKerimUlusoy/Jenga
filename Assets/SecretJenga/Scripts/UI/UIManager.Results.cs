@@ -25,7 +25,7 @@ namespace SecretJenga.UI
             UIFactory.Stretch(dim.rectTransform);
             dim.transform.SetAsFirstSibling();
 
-            var sheet = UIFactory.PaperSheet(g.transform, "SheetReport", new Vector2(0.5f, 0.5f), new Vector2(0, -6), new Vector2(1640, 990), -0.7f, 2, 70);
+            var sheet = UIFactory.PaperSheet(g.transform, "SheetReport", new Vector2(0.5f, 0.5f), new Vector2(0, -6), new Vector2(1640, 990), 0f, 2, 70);
             var col = sheet.Body;
             col.GetComponent<VerticalLayoutGroup>().spacing = 6;
 
@@ -48,7 +48,7 @@ namespace SecretJenga.UI
             h.childForceExpandHeight = true;
 
             UIFactory.Divider(col);
-            _resCards = UIFactory.Write(col, FontKind.Type, "", 18, Ink.Faded, TextAnchor.UpperLeft);
+            _resCards = UIFactory.Write(col, FontKind.Type, "", 20, Ink.Faded, TextAnchor.UpperLeft);
             UIFactory.LE(_resCards, 40);
 
             UIFactory.LE(UIFactory.Rect("Push", col), -1, -1, -1, 1);
@@ -155,44 +155,46 @@ namespace SecretJenga.UI
 
             var color = Palette.Player(r.ColorIndex);
             var head = UIFactory.Rect("Head", colRt);
-            UIFactory.LE(head, 60);
-            UIFactory.HLayout(head, 12, 0, TextAnchor.MiddleLeft, false);
-            UIFactory.Avatar(head, r.Name.ToString(), new Color(color.r * 0.72f, color.g * 0.72f, color.b * 0.72f), 50);
+            UIFactory.LE(head, 56);
+            UIFactory.HLayout(head, 10, 0, TextAnchor.MiddleLeft, false);
+            var placeText = UIFactory.Write(head, FontKind.Title, $"{place}.", 30, champion ? Ink.Red : Ink.Faded, TextAnchor.MiddleLeft);
+            UIFactory.LE(placeText, 56, 38);
+            UIFactory.Avatar(head, r.Name.ToString(), new Color(color.r * 0.72f, color.g * 0.72f, color.b * 0.72f), 46);
             var name = UIFactory.Write(head, FontKind.Body, r.Name.ToString(), 32, Ink.Black, TextAnchor.MiddleLeft);
             name.horizontalOverflow = HorizontalWrapMode.Overflow;
-            UIFactory.LE(name, 60, -1, 1);
+            UIFactory.LE(name, 56, -1, 1);
 
             // points: this round's breakdown and the match total
             var pts = UIFactory.Rect("Points", colRt);
-            UIFactory.LE(pts, 44);
+            UIFactory.LE(pts, 50);
             UIFactory.HLayout(pts, 8, 0, TextAnchor.MiddleLeft, false);
             int round = r.SurvivalPoints + r.TaskPoints + r.PenaltyPoints;
             string pen = r.PenaltyPoints != 0 ? L.T($"  {r.PenaltyPoints} time", $"  {r.PenaltyPoints} süre") : "";
             var breakdown = UIFactory.Write(pts, FontKind.Type,
                 L.T($"{ScoreRules.Signed(r.SurvivalPoints)} table  {ScoreRules.Signed(r.TaskPoints)} task{pen}\n= {ScoreRules.Signed(round)} this round",
                     $"{ScoreRules.Signed(r.SurvivalPoints)} masa  {ScoreRules.Signed(r.TaskPoints)} görev{pen}\n= {ScoreRules.Signed(round)} bu el"),
-                15, round >= 0 ? Ink.Black : Ink.Red, TextAnchor.MiddleLeft);
-            UIFactory.LE(breakdown, 44, -1, 1);
-            var total = UIFactory.Write(pts, FontKind.Title, $"{place}.  {r.TotalScore}", 34, champion ? Ink.Red : Ink.Black, TextAnchor.MiddleRight);
-            UIFactory.LE(total, 44, 110);
+                18, round >= 0 ? Ink.Black : Ink.Red, TextAnchor.MiddleLeft);
+            UIFactory.LE(breakdown, 50, -1, 1);
+            var total = UIFactory.Write(pts, FontKind.Title, r.TotalScore.ToString(), 42, champion ? Ink.Red : Ink.Black, TextAnchor.MiddleRight);
+            UIFactory.LE(total, 50, 70);
 
             var turns = UIFactory.Write(colRt, FontKind.Type,
                 L.T($"{r.SuccessfulTurns} good turn(s)", $"{r.SuccessfulTurns} başarılı tur") + (lost ? L.T("\nLOST - it fell in their hands", "\nKAYBETTİ - kule onun elinde yıkıldı") : L.T("\nwon", "\nkazandı")),
-                16, lost ? Ink.Red : Ink.Green, TextAnchor.UpperLeft);
-            UIFactory.LE(turns, 44);
+                18, lost ? Ink.Red : Ink.Green, TextAnchor.UpperLeft);
+            UIFactory.LE(turns, 46);
 
             var t = r.Task;
             var def = t.Kind == TaskKind.None ? null : GameContent.Task(t.DefinitionIndex);
             var title = UIFactory.Write(colRt, FontKind.Title, def != null ? def.Title : L.T("no task", "görev yok"), 28, Ink.Black, TextAnchor.MiddleLeft);
-            UIFactory.LE(title, 38);
-            var desc = UIFactory.Write(colRt, FontKind.Body, def != null ? def.Describe(t) : "", 19, Ink.Black, TextAnchor.UpperLeft);
-            UIFactory.LE(desc, 84);
-            var prog = UIFactory.Write(colRt, FontKind.Type, def != null ? L.T($"{t.Progress} of {t.Target}", $"{t.Progress} / {t.Target}") : "", 17, Ink.Faded, TextAnchor.MiddleLeft);
+            UIFactory.LE(title, 36);
+            var desc = UIFactory.Write(colRt, FontKind.Body, def != null ? def.Describe(t) : "", 21, Ink.Black, TextAnchor.UpperLeft);
+            UIFactory.LE(desc, 80);
+            var prog = UIFactory.Write(colRt, FontKind.Type, def != null ? L.T($"{t.Progress} of {t.Target}", $"{t.Progress} / {t.Target}") : "", 18, Ink.Faded, TextAnchor.MiddleLeft);
             UIFactory.LE(prog, 26);
 
             // verdict, by hand
             var verdictRow = UIFactory.Rect("Verdict", colRt);
-            UIFactory.LE(verdictRow, 58);
+            UIFactory.LE(verdictRow, 54);
             var word = UIFactory.Write(verdictRow, FontKind.Title, "", 30, Ink.Black, TextAnchor.MiddleLeft);
             UIFactory.Stretch(word.rectTransform, 14, 0, 0, 0);
             if (t.Completed)
@@ -214,8 +216,8 @@ namespace SecretJenga.UI
                 }
             }
 
-            var cardLine = UIFactory.Write(colRt, FontKind.Type, L.T("card: ", "kart: ") + GameContent.CardTitle(r.Card) + (r.Card.Kind != CardKind.None ? (r.Card.Used ? L.T(" - played", " - oynandı") : L.T(" - kept", " - saklandı")) : ""), 15, Ink.Faded, TextAnchor.MiddleLeft);
-            UIFactory.LE(cardLine, 24);
+            var cardLine = UIFactory.Write(colRt, FontKind.Type, L.T("card: ", "kart: ") + GameContent.CardTitle(r.Card) + (r.Card.Kind != CardKind.None ? (r.Card.Used ? L.T(" - played", " - oynandı") : L.T(" - kept", " - saklandı")) : ""), 18, Ink.Faded, TextAnchor.MiddleLeft);
+            UIFactory.LE(cardLine, 26);
         }
     }
 }

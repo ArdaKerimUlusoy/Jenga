@@ -84,6 +84,16 @@ namespace SecretJenga.Game
         bool _firstPerson;
 
         const float UpperArm = 7.4f, Forearm = 6.6f;
+
+        // joint layout; the skinned hand (Tools~/blender_build_hands.py) is modelled around exactly these numbers
+        static readonly float[] FingerX = { -0.6f, -0.2f, 0.2f, 0.57f };
+        static readonly float[] FingerZ = { 1.92f, 1.96f, 1.92f, 1.8f };
+        static readonly float[][] FingerLen = { new[] { 0.72f, 0.42f, 0.34f }, new[] { 0.8f, 0.48f, 0.36f }, new[] { 0.76f, 0.46f, 0.35f }, new[] { 0.58f, 0.36f, 0.3f } };
+        static readonly float[] FingerRadius = { 0.185f, 0.19f, 0.18f, 0.16f };
+        static readonly float[] ThumbLen = { 0.6f, 0.46f, 0.4f };
+        static readonly Vector3 ThumbBase = new Vector3(-0.78f, -0.15f, 0.55f);
+        /// <summary>Finger spread the skinned hand was modelled with.</summary>
+        const float BindSpread = 1.5f;
         /// <summary>Longest comfortable reach from the shoulder to the contact point.</summary>
         public const float Reach = (UpperArm + Forearm) * 0.96f;
 
@@ -204,61 +214,140 @@ namespace SecretJenga.Game
         void Build(Material skin, Material cloth)
         {
             EnsureMeshes();
+            var skinned = SkinnedHand(side);
+            bool primitives = skinned == null;
             Wrist = Node(transform, "Wrist", Vector3.zero);
             // palm: wrist at origin, fingers point +Z, back of the hand +Y, thumb on -X for the right hand
-            Skin(Wrist, side > 0 ? _palmMeshR : _palmMeshL, skin, Vector3.one);
-            var nailMat = NailMaterial(skin);
+            if (primitives) Skin(Wrist, side > 0 ? _palmMeshR : _palmMeshL, skin, Vector3.one);
+            var nailMat = primitives ? NailMaterial(skin) : null;
             _palmCenter = Node(Wrist, "PalmContact", new Vector3(0f, -0.35f, 1.1f));
-            _knuckle = Node(Wrist, "KnuckleContact", new Vector3(0f, 0.1f, 2.15f));
+            _knuckle = Node(Wrist, "KnuckleContact", new Vector3(0f, 0.1f, 2.1f));
 
-            float[] xs = { -0.62f, -0.2f, 0.22f, 0.6f };
-            float[][] lens = { new[] { 0.95f, 0.58f, 0.46f }, new[] { 1.05f, 0.65f, 0.5f }, new[] { 1.0f, 0.6f, 0.47f }, new[] { 0.76f, 0.47f, 0.4f } };
-            float[] radius = { 0.19f, 0.2f, 0.19f, 0.16f };
             for (int f = 0; f < 4; f++)
             {
                 _finger[f] = new Transform[3];
                 var parent = Wrist;
-                var pos = new Vector3(xs[f] * side, 0.02f, 1.95f - (f == 3 ? 0.12f : 0f));
+                var lens = FingerLen[f];
+                var pos = new Vector3(FingerX[f] * side, 0.02f, FingerZ[f]);
                 for (int j = 0; j < 3; j++)
                 {
                     var joint = Node(parent, $"F{f}_{j}", pos);
-                    float r = radius[f] * (1f - 0.12f * j);
-                    Skin(joint, _segMesh, skin, new Vector3(r, r * 0.92f, lens[f][j]));
-                    if (j == 2 && nailMat != null) Skin(joint, _nailMesh, nailMat, new Vector3(r * 0.78f, r * 0.22f, lens[f][j] * 0.42f), new Vector3(0f, r * 0.78f, lens[f][j] * 0.72f));
+                    float r = FingerRadius[f] * (1f - 0.12f * j);
+                    if (primitives) Skin(joint, _segMesh, skin, new Vector3(r, r * 0.92f, lens[j]));
+                    if (j == 2 && nailMat != null) Skin(joint, _nailMesh, nailMat, new Vector3(r * 0.78f, r * 0.22f, lens[j] * 0.42f), new Vector3(0f, r * 0.78f, lens[j] * 0.72f));
                     _finger[f][j] = joint;
                     parent = joint;
-                    pos = new Vector3(0f, 0f, lens[f][j]);
+                    pos = new Vector3(0f, 0f, lens[j]);
                 }
-                _tips[f] = Node(parent, $"F{f}_Tip", new Vector3(0f, -0.05f, lens[f][2] + 0.08f));
+                _tips[f] = Node(parent, $"F{f}_Tip", new Vector3(0f, -0.05f, lens[2] + 0.08f));
             }
 
-            float[] tl = { 0.72f, 0.56f, 0.46f };
             var tp = Wrist;
-            var tpos = new Vector3(-0.78f * side, -0.15f, 0.55f);
+            var tpos = new Vector3(ThumbBase.x * side, ThumbBase.y, ThumbBase.z);
             for (int j = 0; j < 3; j++)
             {
                 var joint = Node(tp, "T_" + j, tpos);
                 float r = 0.23f * (1f - 0.1f * j);
-                Skin(joint, _segMesh, skin, new Vector3(r, r * 0.9f, tl[j]));
-                if (j == 2 && nailMat != null) Skin(joint, _nailMesh, nailMat, new Vector3(r * 0.8f, r * 0.22f, tl[j] * 0.45f), new Vector3(0f, r * 0.75f, tl[j] * 0.7f));
+                if (primitives) Skin(joint, _segMesh, skin, new Vector3(r, r * 0.9f, ThumbLen[j]));
+                if (j == 2 && nailMat != null) Skin(joint, _nailMesh, nailMat, new Vector3(r * 0.8f, r * 0.22f, ThumbLen[j] * 0.45f), new Vector3(0f, r * 0.75f, ThumbLen[j] * 0.7f));
                 _thumb[j] = joint;
                 tp = joint;
-                tpos = new Vector3(0f, 0f, tl[j]);
+                tpos = new Vector3(0f, 0f, ThumbLen[j]);
             }
-            _tips[4] = Node(tp, "T_Tip", new Vector3(0f, 0f, tl[2] + 0.1f));
+            _tips[4] = Node(tp, "T_Tip", new Vector3(0f, 0f, ThumbLen[2] + 0.1f));
 
             // arm: forearm hangs back from the wrist, sleeve over its rear half, upper arm in cloth
             _forearm = Node(transform, "Forearm", Vector3.zero);
-            Skin(_forearm, _armMesh, skin, new Vector3(1f, 0.85f, Forearm));
+            if (primitives) Skin(_forearm, _armMesh, skin, new Vector3(1f, 0.85f, Forearm));
+            else BindSkin(skinned, skin, cloth);
             // a rolled-up shirt sleeve over the back half of the forearm, with a thick turned-up cuff
+            // (the skinned hand models its own as a second submesh)
             _sleeve = Node(_forearm, "Sleeve", new Vector3(0f, 0f, Forearm * 0.52f));
-            Skin(_sleeve, _sleeveMesh, cloth, new Vector3(0.82f, 0.74f, Forearm * 0.53f));
-            Skin(_sleeve, _cuffMesh, cloth, new Vector3(0.86f, 0.78f, 0.9f), new Vector3(0f, 0f, -0.15f));
+            if (primitives || skinned.subMeshCount < 2)
+            {
+                Skin(_sleeve, _sleeveMesh, cloth, new Vector3(0.82f, 0.74f, Forearm * 0.53f));
+                Skin(_sleeve, _cuffMesh, cloth, new Vector3(0.86f, 0.78f, 0.9f), new Vector3(0f, 0f, -0.15f));
+            }
             _upper = Node(transform, "UpperArm", Vector3.zero);
             Skin(_upper, _sleeveMesh, cloth, new Vector3(1.15f, 1.05f, UpperArm));
 
             _pose = _target = PoseFor(HandPoseId.Rest);
             ApplyPose(_pose, 0f);
+        }
+
+        static Mesh _skinR, _skinL;
+        static bool _warnedEmpty;
+
+        /// <summary>The copies must not survive into the next play session (the asset can change in between).</summary>
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetSkinCache() { _skinR = _skinL = null; _warnedEmpty = false; }
+
+        /// <summary>A private copy of the registry hand per side (bind poses are written into it), or null.</summary>
+        static Mesh SkinnedHand(float side)
+        {
+            var src = SecretJengaAssets.Instance.handMesh;
+            if (src == null) return null;
+            if (src.vertexCount == 0 || !src.isReadable)
+            {
+                if (!_warnedEmpty) Debug.LogWarning("[TheLastBlock] The hand mesh asset is empty or not readable; using the procedural hands. Run Tools > The Last Block > Apply Hands, Lamp and Probe Lighting.");
+                _warnedEmpty = true;
+                return null;
+            }
+            if (side > 0) return _skinR != null ? _skinR : (_skinR = Object.Instantiate(src));
+            if (_skinL != null) return _skinL;
+            // the left hand is the right one mirrored across X (winding flips with it)
+            var m = Object.Instantiate(src);
+            var v = m.vertices;
+            var n = m.normals;
+            for (int i = 0; i < v.Length; i++) { v[i].x = -v[i].x; n[i].x = -n[i].x; }
+            m.vertices = v;
+            m.normals = n;
+            for (int s = 0; s < m.subMeshCount; s++)
+            {
+                var t = m.GetTriangles(s);
+                for (int i = 0; i < t.Length; i += 3) (t[i + 1], t[i + 2]) = (t[i + 2], t[i + 1]);
+                m.SetTriangles(t, s, false);
+            }
+            m.RecalculateTangents();
+            m.RecalculateBounds();
+            return _skinL = m;
+        }
+
+        /// <summary>
+        /// Puts the joints in the pose the hand was modelled in, takes the bind poses from there and attaches the
+        /// skinned mesh. Bone order matches Tools~/blender_build_hands.py.
+        /// </summary>
+        void BindSkin(Mesh mesh, Material skin, Material cloth)
+        {
+            var bones = new Transform[17];
+            bones[0] = Wrist;
+            for (int f = 0; f < 4; f++)
+                for (int j = 0; j < 3; j++) bones[1 + f * 3 + j] = _finger[f][j];
+            for (int j = 0; j < 3; j++) bones[13 + j] = _thumb[j];
+            bones[16] = _forearm;
+
+            ApplyPose(new Pose(0f, 0f, 0f, 0f, 0f, 0f, BindSpread), -1f);
+            Wrist.localPosition = Vector3.zero;
+            Wrist.localRotation = Quaternion.identity;
+            _forearm.localPosition = Vector3.zero;
+            _forearm.localRotation = Quaternion.Euler(0f, 180f, 0f);
+            _forearm.localScale = Vector3.one;
+
+            var go = new GameObject("HandSkin");
+            go.transform.SetParent(transform, false);
+            // the asset carries placeholder bind poses; every rig produces the same relative ones, so rewriting is harmless
+            var bind = new Matrix4x4[bones.Length];
+            for (int i = 0; i < bones.Length; i++) bind[i] = bones[i].worldToLocalMatrix * go.transform.localToWorldMatrix;
+            mesh.bindposes = bind;
+            var smr = go.AddComponent<SkinnedMeshRenderer>();
+            smr.bones = bones;
+            smr.rootBone = Wrist;
+            smr.sharedMesh = mesh;
+            smr.sharedMaterials = mesh.subMeshCount > 1 ? new[] { skin, cloth } : new[] { skin };
+            smr.quality = SkinQuality.Bone4;
+            // the IK moves the forearm independently of the root bone; generous bounds keep it from being culled
+            smr.localBounds = new Bounds(Vector3.zero, Vector3.one * 16f);
+            smr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
         }
 
         // ------------------------------------------------------------------ Driving
@@ -285,6 +374,7 @@ namespace SecretJenga.Game
         {
             float dt = Mathf.Max(Time.deltaTime, 1e-4f);
             if (!_hasContact) { _contact = worldContact; _orient = orientation; _hasContact = true; _contactVel = Vector3.zero; }
+            if (!glue && _glued) _releasedAt = Time.time;
             if (glue && _glued)
             {
                 _contact = worldContact;
@@ -292,15 +382,65 @@ namespace SecretJenga.Game
             }
             else
             {
+                // letting go of a block: ease out of the grip instead of snapping to the next target
+                float sinceRelease = Time.time - _releasedAt;
+                if (!glue && sinceRelease < ReleaseEase) follow = Mathf.Lerp(3.5f, follow, sinceRelease / ReleaseEase);
                 float smooth = Mathf.Clamp(1.8f / Mathf.Max(1f, follow), 0.035f, 0.5f);
-                _contact = Vector3.SmoothDamp(_contact, worldContact, ref _contactVel, smooth, 80f, dt);
+                _contact = Vector3.SmoothDamp(_contact, worldContact, ref _contactVel, smooth, 60f, dt);
                 if (glue && (_contact - worldContact).sqrMagnitude < 0.04f) _glued = true;
+                if (!glue && HasObstacle && !TouchesBlocks(_poseId)) _contact = KeepOut(_contact, orientation);
             }
             if (!glue) _glued = false;
-            _orient = Quaternion.Slerp(_orient, orientation, 1f - Mathf.Exp(-follow * (glue ? 1.2f : 0.7f) * dt));
+            float turn = glue ? follow * 1.2f : Mathf.Min(follow, 12f) * 0.7f;
+            _orient = Quaternion.Slerp(_orient, orientation, 1f - Mathf.Exp(-turn * dt));
         }
 
         bool _glued;
+        float _releasedAt = -10f;
+        const float ReleaseEase = 0.6f;
+
+        // ---------------------------------------------------------------- keeping the free hand out of the tower
+        /// <summary>A box the free hand (palm and the fingers ahead of it) never enters, e.g. the tower.</summary>
+        public bool HasObstacle { get; private set; }
+        Vector3 _obstacleCenter, _obstacleHalf;
+        const float ObstacleMargin = 0.35f;     // about half a hand's thickness
+        const float FingerSpan = 2.2f;          // palm centre to fingertips
+
+        public void SetObstacle(Vector3 center, Vector3 halfSize)
+        {
+            HasObstacle = true;
+            _obstacleCenter = center;
+            _obstacleHalf = halfSize;
+        }
+
+        public void ClearObstacle() => HasObstacle = false;
+
+        /// <summary>Poses whose contact point is meant to touch a block (pointing at it, pinching or holding it).</summary>
+        static bool TouchesBlocks(HandPoseId id) => id == HandPoseId.Point || id == HandPoseId.Pinch || id == HandPoseId.Hold || id == HandPoseId.Recoil;
+
+        Vector3 KeepOut(Vector3 p, Quaternion orientation)
+        {
+            var ahead = Vector3.ProjectOnPlane(orientation * Vector3.forward, Vector3.up);
+            ahead = ahead.sqrMagnitude > 1e-4f ? ahead.normalized * FingerSpan : Vector3.zero;
+            for (int i = 0; i <= 2; i++)
+            {
+                var push = PushOut(p + ahead * (i * 0.5f));
+                if (push == Vector3.zero) continue;
+                p += push;
+                _contactVel = Vector3.ProjectOnPlane(_contactVel, push.normalized);
+            }
+            return p;
+        }
+
+        /// <summary>Shortest horizontal move that takes q out of the inflated box (zero when it is outside).</summary>
+        Vector3 PushOut(Vector3 q)
+        {
+            var d = q - _obstacleCenter;
+            float hx = _obstacleHalf.x + ObstacleMargin, hz = _obstacleHalf.z + ObstacleMargin;
+            if (Mathf.Abs(d.y) > _obstacleHalf.y + ObstacleMargin || Mathf.Abs(d.x) > hx || Mathf.Abs(d.z) > hz) return Vector3.zero;
+            float px = hx - Mathf.Abs(d.x), pz = hz - Mathf.Abs(d.z);
+            return px < pz ? new Vector3((d.x >= 0f ? 1f : -1f) * px, 0f, 0f) : new Vector3(0f, 0f, (d.z >= 0f ? 1f : -1f) * pz);
+        }
 
         Transform ContactFor(HandPoseId id)
         {
@@ -380,6 +520,9 @@ namespace SecretJenga.Game
             _thumb[2].localRotation = Quaternion.Euler(p.ThumbCurl * 55f, 0f, 0f);
         }
 
+        Vector3 _pole;
+        bool _hasPole;
+
         void SolveArm()
         {
             var wrist = Wrist.position;
@@ -391,13 +534,21 @@ namespace SecretJenga.Game
             var dir = toW.normalized;
             float a = (UpperArm * UpperArm - Forearm * Forearm + d * d) / (2f * d);
             float h = Mathf.Sqrt(Mathf.Max(0f, UpperArm * UpperArm - a * a));
-            var pole = Vector3.ProjectOnPlane(Vector3.down + Vector3.Cross(Vector3.up, dir) * 0.6f * side + back * 0.4f, dir).normalized;
-            if (pole.sqrMagnitude < 1e-4f) pole = Vector3.down;
+            // the bend direction is smoothed and held when the arm points nearly along it; recomputing it from scratch
+            // every frame flips the elbow (and the whole forearm) whenever the hand passes under the shoulder
+            var rawPole = Vector3.ProjectOnPlane(Vector3.down + Vector3.Cross(Vector3.up, dir) * 0.6f * side + back * 0.4f, dir);
+            if (!_hasPole) { _pole = rawPole.sqrMagnitude > 1e-4f ? rawPole.normalized : Vector3.down; _hasPole = true; }
+            if (rawPole.magnitude > 0.15f) _pole = Vector3.Slerp(_pole, rawPole.normalized, 1f - Mathf.Exp(-10f * Mathf.Max(Time.deltaTime, 1e-4f)));
+            var pole = Vector3.ProjectOnPlane(_pole, dir);
+            pole = pole.sqrMagnitude > 1e-4f ? pole.normalized : Vector3.down;
             var elbow = s + dir * a + pole * h;
 
             var fDir = (wrist - elbow);
             _forearm.position = wrist;
-            _forearm.rotation = Quaternion.LookRotation(-fDir.normalized, Vector3.up);
+            // the forearm rolls with the hand (pronation), so the skinned wrist never twists like a wrung towel
+            var roll = Wrist.rotation * Vector3.up;
+            if (Mathf.Abs(Vector3.Dot(roll, fDir.normalized)) > 0.95f) roll = Vector3.up;
+            _forearm.rotation = Quaternion.LookRotation(-fDir.normalized, roll);
             var uDir = (elbow - s);
             _upper.position = s;
             _upper.rotation = Quaternion.LookRotation(uDir.normalized, Vector3.up);
